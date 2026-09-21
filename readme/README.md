@@ -2,7 +2,7 @@
 
 Caso de estudio académico enfocado en la capa de persistencia, integridad referencial, migraciones de base de datos y pruebas de integración.
 
-## 🛠️ Tecnologías Utilizadas
+## Tecnologías Utilizadas
 
 - **Java 21**
 - **Spring Boot 3/4**
@@ -13,7 +13,7 @@ Caso de estudio académico enfocado en la capa de persistencia, integridad refer
 
 ---
 
-## 🗄️ Esquema Relacional y Migraciones
+## Esquema Relacional y Migraciones
 
 La base de datos se versiona a través de Flyway en `src/main/resources/db/migration/`:
 
@@ -23,12 +23,9 @@ La base de datos se versiona a través de Flyway en `src/main/resources/db/migra
 
 ---
 
-## 🧪 Ejecución de Pruebas
+## Ejecución de Pruebas
 
-Para ejecutar la suite de pruebas de integración que valida las reglas de negocio e integridad de PostgreSQL utilizando Testcontainers:
-
-```bash
-./mvnw clean test
+Para ejecutar la suite de pruebas de integración que valida las reglas de negocio e integridad de PostgreSQL utilizando Testcontainers: ./mvnw clean test
 
 --> RESPUESTAS A PREGUNTAS TEÓRICAS
 
