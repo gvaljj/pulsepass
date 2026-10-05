@@ -5,20 +5,18 @@ import com.pulsepass.dto.EventResponse;
 import com.pulsepass.domain.model.Event;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
 public interface EventMapper {
 
-    EventResponse toResponse(Event event);
-
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "status", constant = "DRAFT")
     @Mapping(target = "venue", ignore = true)
     @Mapping(target = "artists", ignore = true)
     Event toEntity(EventRequest request);
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "venue", ignore = true)
+    @Mapping(target = "venueCode", source = "venue.code")
+    @Mapping(target = "venueName", source = "venue.name")
     @Mapping(target = "artists", ignore = true)
-    void updateEntityFromRequest(EventRequest request, @MappingTarget Event event);
+    EventResponse toResponse(Event event);
 }

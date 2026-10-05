@@ -10,6 +10,7 @@ import com.pulsepass.repository.EventRepository;
 import com.pulsepass.service.EventService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.pulsepass.service.TicketService;
 
 import java.util.List;
 import java.util.stream.Collectors;
