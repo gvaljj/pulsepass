@@ -14,6 +14,9 @@ import java.util.Optional;
 @Repository
 public interface EventRepository extends JpaRepository<Event, Long> {
 
+
+    boolean existsByEventCode(String eventCode);
+
     // FR-EVT-002: Buscar evento por código único
     Optional<Event> findByEventCode(String eventCode);
 
