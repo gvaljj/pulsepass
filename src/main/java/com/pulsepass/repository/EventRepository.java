@@ -31,9 +31,10 @@ public interface EventRepository extends JpaRepository<Event, Long> {
     @Query("SELECT DISTINCT e FROM Event e JOIN e.artists a WHERE e.venue.city = :city AND a.stageName = :stageName")
     List<Event> findByCityAndArtistStageName(@Param("city") String city, @Param("stageName") String stageName);
 
-    // FR-SRC-003: Eventos recomendados (posteriores a fecha, en ciudad y cuyo artista contenga texto sin importar mayúsculas)
+    // FR-SRC-003: Eventos recomendados (publicados, posteriores a fecha, en ciudad y cuyo artista contenga texto sin importar mayúsculas)
     @Query("SELECT DISTINCT e FROM Event e JOIN e.artists a " +
-           "WHERE e.eventDate > :afterDate " +
+           "WHERE e.status = com.pulsepass.domain.enums.EventStatus.PUBLISHED " +
+           "AND e.eventDate > :afterDate " +
            "AND e.venue.city = :city " +
            "AND LOWER(a.stageName) LIKE LOWER(CONCAT('%', :artistName, '%')) " +
            "ORDER BY e.eventDate ASC")

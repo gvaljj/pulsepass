@@ -9,14 +9,18 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface TicketRepository extends JpaRepository<Ticket, Long> {
 
-    // FR-TKT-002: Buscar ticket por su código de negocio
-    List<Ticket> findByTicketCode(String ticketCode);
+    // FR-TKT-002: Buscar ticket por su código de negocio (único en BD, por eso Optional)
+    Optional<Ticket> findByTicketCode(String ticketCode);
 
-    // FR-TKT-006: Consultar tickets de un usuario por email y estado
+    // FR-TKT-006: Consultar tickets de un usuario por email (sin filtro de estado)
+    List<Ticket> findByUserEmail(String email);
+
+    // FR-TKT-006: Consultar tickets de un usuario por email y estado opcional
     List<Ticket> findByUserEmailAndStatus(String email, TicketStatus status);
 
     // FR-TKT-007: Recuperar tickets pagados (PAID) de un evento mediante eventCode
