@@ -1,13 +1,16 @@
 package com.pulsepass.service;
 
-import com.pulsepass.dto.EventRequest;
-import com.pulsepass.dto.EventResponse;
+import com.pulsepass.dto.request.CreateEventRequest;
+import com.pulsepass.dto.response.EventResponse;
+import com.pulsepass.dto.response.EventSummaryResponse;
 import java.util.List;
 
+// PRD §11.1: contrato mínimo de EventService
 public interface EventService {
-    List<EventResponse> getAllEvents();
-    EventResponse getEventById(Long id);
-    EventResponse createEvent(EventRequest request);
-    EventResponse updateEvent(Long id, EventRequest request);
-    void deleteEvent(Long id);
+    EventResponse create(CreateEventRequest request);
+    EventResponse findByCode(String eventCode);
+    List<EventSummaryResponse> findPublishedEvents();
+    EventResponse publish(String eventCode);
+    EventResponse addArtist(String eventCode, Long artistId);
+    List<EventSummaryResponse> findByArtist(String stageName);
 }

@@ -14,17 +14,22 @@ import com.pulsepass.mapper.TicketMapper;
 import com.pulsepass.repository.EventRepository;
 import com.pulsepass.repository.TicketRepository;
 import com.pulsepass.repository.UserRepository;
+import com.pulsepass.service.TicketService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.pulsepass.service.TicketService;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.time.Period;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 public class TicketServiceImpl implements TicketService {
+
+    // Precio base académico. La estrategia de precio vive encapsulada en calculatePrice (BR-TICKET-009).
+    private static final BigDecimal PRECIO_BASE = new BigDecimal("50.00");
 
     private final TicketRepository ticketRepository;
     private final UserRepository userRepository;
@@ -41,64 +46,58 @@ public class TicketServiceImpl implements TicketService {
         this.ticketMapper = ticketMapper;
     }
 
+    // Flujo de compra atómico (PRD §24 y §39): usuario -> evento -> edad -> capacidad -> precio -> ticket -> SOLD_OUT
     @Override
     @Transactional
     public TicketResponse purchase(PurchaseTicketRequest request) {
-        // BR-TICKET-001 y BR-TICKET-002: Buscar y validar usuario
+        // BR-TICKET-001: usuario existente
         User user = userRepository.findByEmailIgnoreCase(request.userEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con email: " + request.userEmail()));
-        if (!user.isActive()) {
-            throw new BusinessRuleException("El usuario se encuentra inactivo y no puede comprar tickets");
+        // BR-TICKET-002: usuario activo
+        if (!Boolean.TRUE.equals(user.getActive())) {
+            throw new BusinessRuleException("El usuario está inactivo y no puede comprar tickets");
         }
 
-        // BR-TICKET-003, BR-TICKET-004, BR-TICKET-005: Buscar y validar evento
+        // BR-TICKET-003: evento existente
         Event event = eventRepository.findByEventCode(request.eventCode())
-                .orElseThrow(() -> new ResourceNotFoundException("Evento no encontrado con código: " + request.eventCode()));
-
+                .orElseThrow(() -> new ResourceNotFoundException("Evento no encontrado: " + request.eventCode()));
+        // BR-TICKET-004: solo eventos PUBLISHED
         if (event.getStatus() != EventStatus.PUBLISHED) {
-            throw new BusinessRuleException("Solo se pueden comprar tickets para eventos en estado PUBLISHED");
+            throw new BusinessRuleException("Solo se pueden comprar tickets para eventos PUBLISHED");
+        }
+        // BR-TICKET-005: fecha futura
+        if (event.getEventDate() == null || !event.getEventDate().isAfter(LocalDateTime.now())) {
+            throw new BusinessRuleException("No se puede comprar para un evento que ya ocurrió");
+        }
+        // BR-TICKET-006: edad mínima evaluada en la fecha del evento usando UserProfile.birthDate
+        validateMinimumAge(user, event);
+
+        // BR-TICKET-007: capacidad del venue
+        long paidTickets = ticketRepository.countByEventEventCodeAndStatus(event.getEventCode(), TicketStatus.PAID);
+        int capacity = event.getVenue().getCapacity();
+        if (paidTickets >= capacity) {
+            throw new BusinessRuleException("El evento se encuentra agotado (sin capacidad disponible)");
         }
 
-        // BR-TICKET-006: Validar edad mínima si el evento lo requiere
-        if (event.getMinimumAge() != null && event.getMinimumAge() > 0) {
-            if (user.getUserProfile() == null || user.getUserProfile().getBirthDate() == null) {
-                throw new BusinessRuleException("El usuario no tiene fecha de registro de nacimiento para validar la edad");
-            }
-            int age = Period.between(user.getUserProfile().getBirthDate(), event.getEventDate().toLocalDate()).getYears();
-            if (age < event.getMinimumAge()) {
-                throw new BusinessRuleException("El usuario no cumple con la edad mínima requerida para este evento");
-            }
-        }
-
-        // BR-TICKET-007: Validar capacidad del venue
-        long paidTicketsCount = ticketRepository.countByEventEventCodeAndStatus(event.getEventCode(), TicketStatus.PAID);
-        int venueCapacity = event.getVenue().getCapacity();
-
-        if (paidTicketsCount >= venueCapacity) {
-            throw new BusinessRuleException("El evento se encuentra agotado (capacidad máxima alcanzada)");
-        }
-
-        // Calcular precio según el tipo de ticket (Estrategia académica base)
-        BigDecimal price = calculatePrice(request.type());
-
-        // Crear el ticket
+        // Precio calculado por el sistema, nunca confiado desde el cliente (PRD §22)
         Ticket ticket = new Ticket();
-        ticket.setTicketCode("TCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        ticket.setTicketCode(generateTicketCode());
         ticket.setType(request.type());
-        ticket.setPrice(price);
+        ticket.setPrice(calculatePrice(request.type()));
         ticket.setStatus(TicketStatus.PAID);
+        ticket.setPurchaseDate(LocalDateTime.now());
         ticket.setUser(user);
         ticket.setEvent(event);
 
-        Ticket savedTicket = ticketRepository.save(ticket);
+        Ticket saved = ticketRepository.save(ticket);
 
-        // BR-TICKET-008: Si esta compra completa la capacidad, cambiar evento a SOLD_OUT
-        if (paidTicketsCount + 1 >= venueCapacity) {
+        // BR-TICKET-008: si esta compra completa la capacidad, el evento pasa a SOLD_OUT en la misma transacción
+        if (paidTickets + 1 >= capacity) {
             event.setStatus(EventStatus.SOLD_OUT);
             eventRepository.save(event);
         }
 
-        return ticketMapper.toResponse(savedTicket);
+        return ticketMapper.toResponse(saved);
     }
 
     @Override
@@ -121,21 +120,27 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(readOnly = true)
     public List<TicketResponse> findPaidTicketsByEvent(String eventCode) {
-        return ticketRepository.countByEventEventCodeAndStatus(eventCode, TicketStatus.PAID) > 0 ? 
-                ticketRepository.findByEventEventCodeAndStatus(eventCode, TicketStatus.PAID)
-                        .stream().map(ticketMapper::toResponse).toList() 
-                : List.of();
+        return ticketRepository.findByEventEventCodeAndStatus(eventCode, TicketStatus.PAID)
+                .stream()
+                .map(ticketMapper::toResponse)
+                .toList();
     }
 
+    // BR-TICKET-010..012: solo tickets PAID, y no después de la fecha del evento
     @Override
     @Transactional
     public TicketResponse cancel(String ticketCode) {
         Ticket ticket = ticketRepository.findByTicketCode(ticketCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket no encontrado: " + ticketCode));
 
-        // BR-TICKET-010 y BR-TICKET-011: Solo se puede cancelar si está PAID
+        // BR-TICKET-010 y BR-TICKET-011: solo se cancela un ticket PAID (no USED ni CANCELLED)
         if (ticket.getStatus() != TicketStatus.PAID) {
-            throw new BusinessRuleException("Solo se pueden cancelar tickets que se encuentren en estado PAID");
+            throw new BusinessRuleException("Solo se pueden cancelar tickets en estado PAID");
+        }
+        // BR-TICKET-012: no cancelar después de la fecha del evento
+        LocalDateTime eventDate = ticket.getEvent().getEventDate();
+        if (eventDate != null && !eventDate.isAfter(LocalDateTime.now())) {
+            throw new BusinessRuleException("No se puede cancelar un ticket después de la fecha del evento");
         }
 
         ticket.setStatus(TicketStatus.CANCELLED);
@@ -143,13 +148,13 @@ public class TicketServiceImpl implements TicketService {
         return ticketMapper.toResponse(updated);
     }
 
+    // BR-TICKET-013 y BR-TICKET-014: solo tickets PAID pueden pasar a USED
     @Override
     @Transactional
     public TicketResponse markAsUsed(String ticketCode) {
         Ticket ticket = ticketRepository.findByTicketCode(ticketCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket no encontrado: " + ticketCode));
 
-        // BR-TICKET-013 y BR-TICKET-014: Solo PAID puede pasar a USED
         if (ticket.getStatus() != TicketStatus.PAID) {
             throw new BusinessRuleException("Solo se puede marcar como usado un ticket en estado PAID");
         }
@@ -159,12 +164,37 @@ public class TicketServiceImpl implements TicketService {
         return ticketMapper.toResponse(updated);
     }
 
+    // BR-TICKET-006: la edad se calcula con UserProfile.birthDate evaluada en la fecha del evento
+    private void validateMinimumAge(User user, Event event) {
+        Integer minimumAge = event.getMinimumAge();
+        if (minimumAge == null || minimumAge <= 0) {
+            return; // 0 significa sin restricción de edad
+        }
+        if (user.getProfile() == null || user.getProfile().getBirthDate() == null) {
+            throw new BusinessRuleException("El usuario no tiene fecha de nacimiento registrada para validar la edad mínima");
+        }
+        int age = Period.between(user.getProfile().getBirthDate(), event.getEventDate().toLocalDate()).getYears();
+        if (age < minimumAge) {
+            throw new BusinessRuleException("El usuario no cumple la edad mínima requerida (" + minimumAge + ")");
+        }
+    }
+
+    // BR-TICKET-009: estrategia de precio encapsulada; nunca price < 0
     private BigDecimal calculatePrice(TicketType type) {
-        return switch (type) {
-            case GENERAL -> new BigDecimal("50.00");
-            case STUDENT -> new BigDecimal("30.00");
-            case VIP -> new BigDecimal("120.00");
-            case BACKSTAGE -> new BigDecimal("200.00");
+        BigDecimal multiplier = switch (type) {
+            case GENERAL -> BigDecimal.ONE;            // precio base
+            case STUDENT -> new BigDecimal("0.60");    // descuento
+            case VIP -> new BigDecimal("2.40");        // multiplicador
+            case BACKSTAGE -> new BigDecimal("4.00");  // multiplicador superior
         };
+        BigDecimal price = PRECIO_BASE.multiply(multiplier).setScale(2, RoundingMode.HALF_UP);
+        if (price.signum() < 0) {
+            throw new BusinessRuleException("El precio del ticket no puede ser negativo");
+        }
+        return price;
+    }
+
+    private String generateTicketCode() {
+        return "TCK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }
