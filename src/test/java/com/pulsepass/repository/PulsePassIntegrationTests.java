@@ -172,7 +172,7 @@ class PulsePassIntegrationTests {
         crearTicket("TCK-P2", TicketStatus.PAID, user, event);
         crearTicket("TCK-R1", TicketStatus.RESERVED, user, event);
 
-        long paidCount = ticketRepository.countPaidTicketsByEventCode("EVT-COUNT", TicketStatus.PAID);
+        long paidCount = ticketRepository.countByEventEventCodeAndStatus("EVT-COUNT", TicketStatus.PAID);
         assertThat(paidCount).isEqualTo(2);
     }
 
