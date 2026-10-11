@@ -5,7 +5,7 @@ Caso de estudio académico enfocado en la capa de persistencia, integridad refer
 ## Tecnologías Utilizadas
 
 - **Java 21**
-- **Spring Boot 3/4**
+- **Spring Boot 4.x**
 - **Spring Data JPA / Hibernate**
 - **PostgreSQL**
 - **Flyway** (Gestión de migraciones)
@@ -20,6 +20,32 @@ La base de datos se versiona a través de Flyway en `src/main/resources/db/migra
 1. `V1__create_schema.sql`: Creación de tablas (`venues`, `events`, `artists`, `event_artists`, `users`, `user_profiles`, `tickets`) con restricciones de clave primaria, clave foránea, `UNIQUE` y `CHECK`.
 2. `V2__insert_initial_artists.sql`: Inserción del catálogo inicial de artistas.
 3. `V3__add_streaming_url_to_event.sql`: Evolución del esquema para soportar URLs de streaming en eventos.
+4. `V4__add_fk_indexes.sql`: Índices sobre columnas foráneas consultadas frecuentemente (`events.venue_id`, `user_profiles.user_id`, `tickets.user_id`, `tickets.event_id`).
+
+Hibernate opera en modo `validate` (`spring.jpa.hibernate.ddl-auto=validate`): el esquema lo crea y evoluciona exclusivamente Flyway.
+
+---
+
+## Estrategia de Consultas (Repository)
+
+Las consultas simples usan **Query Methods** de Spring Data; las complejas usan **JPQL** (`@Query`) con JOIN, COUNT o DISTINCT. No se utiliza SQL nativo.
+
+| Repository | Método | Mecanismo | Requisito |
+|---|---|---|---|
+| VenueRepository | `findByCode` | Query Method | FR-VEN-001 |
+| EventRepository | `findByEventCode` | Query Method | FR-EVT-002 |
+| EventRepository | `findByStatusOrderByEventDateAsc` | Query Method | FR-EVT-005 |
+| EventRepository | `findByVenueCode` | Query Method | FR-VEN-004 |
+| EventRepository | `findByArtistStageName` | JPQL JOIN + DISTINCT | FR-SRC-001 |
+| EventRepository | `findByCityAndArtistStageName` | JPQL multi-asociación | FR-SRC-002 |
+| EventRepository | `findRecommendedEvents` | JPQL JOIN + LOWER + DISTINCT (solo PUBLISHED) | FR-SRC-003 |
+| UserRepository | `findByUsername` / `findByEmailIgnoreCase` | Query Method | FR-USR-002 |
+| TicketRepository | `findByTicketCode` | Query Method (devuelve `Optional`) | FR-TKT-002 |
+| TicketRepository | `findByUserEmail` / `findByUserEmailAndStatus` | Query Method | FR-TKT-006 |
+| TicketRepository | `findByEventEventCodeAndStatus` | Query Method | FR-TKT-007 |
+| TicketRepository | `countPaidTicketsByEventCode` | JPQL COUNT | FR-TKT-008 |
+| TicketRepository | `findTicketsForFutureEvents` | JPQL + ORDER BY | FR-SRC-004 |
+| ArtistRepository | `findByStageName` | Query Method | FR-ART-002 |
 
 ---
 
