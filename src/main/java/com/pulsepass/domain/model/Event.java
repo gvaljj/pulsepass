@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 
 @Entity
-@Table(name = "events")
+@Table(name = "events", indexes = @Index(name = "idx_events_venue_id", columnList = "venue_id"))
 public class Event {
 
     @Id
