@@ -6,6 +6,8 @@ Caso de estudio académico enfocado en la capa de persistencia, integridad refer
 
 - **Java 21**
 - **Spring Boot 4.x**
+- **Spring Web / MVC (API REST)**
+- **Bean Validation**
 - **Spring Data JPA / Hibernate**
 - **PostgreSQL**
 - **Flyway** (Gestión de migraciones)
@@ -49,9 +51,61 @@ Las consultas simples usan **Query Methods** de Spring Data; las complejas usan 
 
 ---
 
+## API REST (Capa de Controladores)
+
+La capa de controladores expone los 20 métodos de los Services como una API REST. Los controllers son delgados: delegan en los Services, no contienen lógica de negocio ni acceden a Repositories, y todos responden un `ResponseEntity` con DTOs de respuesta (nunca entidades JPA).
+
+| Método | Ruta | Descripción | Éxito | Requisito |
+|---|---|---|---|---|
+| GET | `/api/venues/{code}` | Venue por código | 200 / 404 | FR-CTRL-VEN-001 |
+| GET | `/api/venues/active` | Venues activos | 200 | FR-CTRL-VEN-002 |
+| POST | `/api/events` | Crear evento | 201 / 400 | FR-CTRL-EVT-001 |
+| GET | `/api/events/{eventCode}` | Evento por código | 200 / 404 | FR-CTRL-EVT-002 |
+| GET | `/api/events/published` | Eventos publicados | 200 | FR-CTRL-EVT-003 |
+| PATCH | `/api/events/{eventCode}/publish` | Publicar evento | 200 / 409 | FR-CTRL-EVT-004 |
+| POST | `/api/events/{eventCode}/artists/{artistId}` | Asociar artista a evento | 200 / 409 | FR-CTRL-EVT-005 |
+| GET | `/api/events/by-artist?stageName=` | Eventos por nombre artístico | 200 | FR-CTRL-EVT-006 |
+| GET | `/api/artists/{id}` | Artista por ID | 200 / 404 | FR-CTRL-ART-001 |
+| GET | `/api/artists/by-stage-name?stageName=` | Artista por nombre artístico | 200 / 404 | FR-CTRL-ART-002 |
+| GET | `/api/artists/active` | Artistas activos | 200 | FR-CTRL-ART-003 |
+| POST | `/api/users` | Registrar usuario | 201 / 400 / 409 | FR-CTRL-USR-001 |
+| GET | `/api/users/by-email?email=` | Usuario por email | 200 / 404 | FR-CTRL-USR-002 |
+| GET | `/api/users/by-username?username=` | Usuario por username | 200 / 404 | FR-CTRL-USR-003 |
+| POST | `/api/tickets` | Comprar ticket | 201 / 400 / 404 / 409 | FR-CTRL-TKT-001 |
+| GET | `/api/tickets/{ticketCode}` | Ticket por código | 200 / 404 | FR-CTRL-TKT-002 |
+| GET | `/api/tickets/by-user?email=` | Tickets por email de usuario | 200 | FR-CTRL-TKT-003 |
+| GET | `/api/events/{eventCode}/tickets/paid` | Tickets PAID de un evento | 200 | FR-CTRL-TKT-004 |
+| PATCH | `/api/tickets/{ticketCode}/cancel` | Cancelar ticket | 200 / 409 | FR-CTRL-TKT-005 |
+| PATCH | `/api/tickets/{ticketCode}/use` | Marcar ticket como usado | 200 / 409 | FR-CTRL-TKT-006 |
+
+### Contrato de errores
+
+Todos los errores devuelven un `ErrorResponse` JSON uniforme (`timestamp`, `status`, `error`, `message`, `details`), producido por el `GlobalExceptionHandler` centralizado:
+
+```json
+{
+  "timestamp": "2026-10-11T20:00:00",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "details": { "eventCode": "El código del evento es obligatorio" }
+}
+```
+
+| Condición | Código | Origen |
+|---|---|---|
+| Request inválido (Bean Validation) | 400 | `MethodArgumentNotValidException` |
+| JSON mal formado | 400 | `HttpMessageNotReadableException` |
+| Recurso inexistente | 404 | `ResourceNotFoundException` |
+| Recurso duplicado | 409 | `DuplicateResourceException` |
+| Regla de negocio incumplida | 409 | `BusinessRuleException` |
+| Error inesperado (sin stack traces) | 500 | `Exception` (NFR-CTRL-007) |
+
+---
+
 ## Ejecución de Pruebas
 
-Para ejecutar la suite de pruebas de integración que valida las reglas de negocio e integridad de PostgreSQL utilizando Testcontainers: ./mvnw clean test
+Para ejecutar la suite completa (pruebas unitarias de servicios, pruebas de contrato HTTP de los controllers con `@WebMvcTest`/`MockMvc` y pruebas de integración sobre PostgreSQL real con Testcontainers): ./mvnw clean test
 
 --> RESPUESTAS A PREGUNTAS TEÓRICAS
 
