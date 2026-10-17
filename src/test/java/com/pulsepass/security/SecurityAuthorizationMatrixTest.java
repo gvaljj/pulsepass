@@ -212,8 +212,16 @@ class SecurityAuthorizationMatrixTest {
     }
 
     private String tamperedToken() {
+        // Se altera el PRIMER carácter del segmento de firma (parte 3): eso cambia bits
+        // significativos y la firma deja de verificar SIEMPRE. Mutar el último carácter Base64
+        // podía tocar solo bits de relleno y decodificar a los mismos bytes (token aún válido),
+        // volviendo intermitente a T-SEC-008.
         String valid = tokenFor("andrea");
-        return valid.substring(0, valid.length() - 1) + (valid.endsWith("A") ? "B" : "A");
+        String[] parts = valid.split("\\.");
+        char original = parts[2].charAt(0);
+        char replacement = (original == 'A') ? 'B' : 'A';
+        parts[2] = replacement + parts[2].substring(1);
+        return String.join(".", parts);
     }
 
     private String bearer(String token) {
@@ -595,6 +603,12 @@ class SecurityAuthorizationMatrixTest {
         postPublic("/api/users", registerBody("correo-malo", "no-es-correo", PASSWORD))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.details.email").exists());
+
+        // §9.3: 37 "á" (74 bytes UTF-8) cumplen el mínimo de 12 caracteres pero superan los
+        // 72 bytes que BCrypt procesa -> 400 con el detalle del campo password.
+        postPublic("/api/users", registerBody("multibyte", "multibyte@email.com", "\\u00e1".repeat(37)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details.password").exists());
     }
 
     // ---------------------------------------------------------------- T-SEC-019: sin fugas

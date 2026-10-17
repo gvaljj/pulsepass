@@ -106,6 +106,44 @@ class UserControllerTest {
         verify(authService, never()).register(any(RegisterUserRequest.class));
     }
 
+    // TEST-CTRL-USR-002c / §9.3: el máximo de contraseña son 72 BYTES. 37 "á" (74 bytes UTF-8)
+    // cumplen el mínimo de 12 caracteres pero exceden el límite de BCrypt -> 400.
+    // En el JSON se usa la secuencia de escape \u00e1 para no depender del charset del request.
+    @Test
+    void register_PasswordExceedingByteLimit_Returns400_AndDoesNotCallService() throws Exception {
+        String body = """
+                {"username":"andrea","email":"andrea@email.com","firstName":"Andrea",
+                 "lastName":"Gomez","birthDate":"2001-01-01","password":"%s"}
+                """.formatted("\\u00e1".repeat(37));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details.password").exists());
+
+        verify(authService, never()).register(any(RegisterUserRequest.class));
+    }
+
+    // TEST-CTRL-USR-002d / §9.3: exactamente 72 bytes (72 ASCII) es el borde superior válido -> 201.
+    @Test
+    @WithAnonymousUser
+    void register_PasswordAtByteLimit_Returns201() throws Exception {
+        when(authService.register(any(RegisterUserRequest.class))).thenReturn(sampleUser());
+
+        String body = """
+                {"username":"andrea","email":"andrea@email.com","firstName":"Andrea",
+                 "lastName":"Gomez","birthDate":"2001-01-01","password":"%s"}
+                """.formatted("A".repeat(72));
+
+        mockMvc.perform(post("/api/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        verify(authService).register(any(RegisterUserRequest.class));
+    }
+
     // TEST-CTRL-USR-003: username duplicado -> 409
     @Test
     void register_Duplicate_Returns409() throws Exception {
