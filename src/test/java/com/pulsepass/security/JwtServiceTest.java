@@ -99,8 +99,13 @@ class JwtServiceTest {
     @DisplayName("Firma alterada -> JwtException (token rechazado, nunca confiable)")
     void validate_FirmaAlterada_LanzaJwtException() {
         String valid = jwtService.generateToken(principal());
-        String tampered = valid.substring(0, valid.length() - 1)
-                + (valid.endsWith("A") ? "B" : "A");
+        // Se altera el PRIMER carácter de la firma (no el último): cada carácter Base64 codifica 6 bits
+        // completos, así que el primer carácter siempre cambia los bytes decodificados y la verificación
+        // falla. Modificar el último es no determinista (sus bits de relleno pueden no cambiar la firma).
+        int signatureStart = valid.lastIndexOf('.') + 1;
+        String signature = valid.substring(signatureStart);
+        char tamperedFirst = (signature.charAt(0) == 'A') ? 'B' : 'A';
+        String tampered = valid.substring(0, signatureStart) + tamperedFirst + signature.substring(1);
 
         assertThatThrownBy(() -> jwtService.validate(tampered))
                 .isInstanceOf(JwtException.class);

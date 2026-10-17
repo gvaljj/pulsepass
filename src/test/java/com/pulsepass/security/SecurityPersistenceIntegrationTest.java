@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -163,6 +164,55 @@ class SecurityPersistenceIntegrationTest {
                 .andExpect(jsonPath("$.message").value(SecurityErrorMessages.INVALID_CREDENTIALS));
 
         assertThat(userCredentialRepository.findByUserId(legacy.getId())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Procedimiento V5 (§9.2): activa un usuario preexistente sin password por defecto y rechaza reactivaciones")
+    void procedimientoV5_ActivaUsuarioPreexistente() throws Exception {
+        User legacy = new User("legado-activo", "legado-activo@email.com");
+        legacy.setActive(true);
+        legacy = userRepository.save(legacy);
+        Long legacyId = legacy.getId();
+        // Sin credencial ni rol todavía: deny-by-default hasta la activación segura (§9.2)
+
+        // El hash BCrypt lo aporta el proceso de activación (contraseña elegida por el propio usuario);
+        // la función únicamente valida y enlaza: nunca se genera ni comparte un password predeterminado.
+        String hash = passwordEncoder.encode(PASSWORD);
+        Boolean activada = jdbcTemplate.queryForObject(
+                "SELECT assign_user_credential(?, ?, 'USER')", Boolean.class, legacyId, hash);
+
+        assertThat(activada).isTrue();
+        assertThat(passwordEncoder.matches(PASSWORD,
+                userCredentialRepository.findByUserId(legacyId).orElseThrow().getPasswordHash())).isTrue();
+        assertThat(userRoleRepository.findByUserId(legacyId))
+                .extracting(UserRole::getRole)
+                .contains("USER");
+
+        // Tras la activación, el usuario legado ya puede autenticarse
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(loginBody("legado-activo", PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+
+        // Segunda vinculación -> rechazada: jamás se sobrescribe una credencial existente
+        assertThatThrownBy(() -> jdbcTemplate.queryForObject(
+                "SELECT assign_user_credential(?, ?, 'USER')", Boolean.class, legacyId, hash))
+                .hasStackTraceContaining("ya tiene credencial asignada");
+
+        // Hash que no es BCrypt -> rechazado (nunca se admite un password en claro ni uno compartido)
+        User otro = new User("legado-rechazado", "legado-rechazado@email.com");
+        otro.setActive(true);
+        otro = userRepository.save(otro);
+        Long otroId = otro.getId();
+        assertThatThrownBy(() -> jdbcTemplate.queryForObject(
+                "SELECT assign_user_credential(?, ?, 'USER')", Boolean.class, otroId, "password-en-claro"))
+                .hasStackTraceContaining("no es BCrypt");
+
+        // Usuario inexistente -> rechazado
+        assertThatThrownBy(() -> jdbcTemplate.queryForObject(
+                "SELECT assign_user_credential(?, ?, 'USER')", Boolean.class, 999_999L, hash))
+                .hasStackTraceContaining("no existe");
     }
 
     @Test

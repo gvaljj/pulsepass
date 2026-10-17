@@ -26,7 +26,7 @@ La base de datos se versiona a través de Flyway en `src/main/resources/db/migra
 2. `V2__insert_initial_artists.sql`: Inserción del catálogo inicial de artistas.
 3. `V3__add_streaming_url_to_event.sql`: Evolución del esquema para soportar URLs de streaming en eventos.
 4. `V4__add_fk_indexes.sql`: Índices sobre columnas foráneas consultadas frecuentemente (`events.venue_id`, `user_profiles.user_id`, `tickets.user_id`, `tickets.event_id`).
-5. `V5__security_credentials_roles.sql`: Migración incremental de la capa de seguridad: tablas `user_credentials` (hash BCrypt por usuario, sin contraseñas en claro) y `user_roles` (asignación usuario↔rol con clave compuesta). No modifica V1-V4.
+5. `V5__security_credentials_roles.sql`: Migración incremental de la capa de seguridad: tablas `user_credentials` (hash BCrypt por usuario, sin contraseñas en claro) y `user_roles` (asignación usuario↔rol con clave compuesta), más el procedimiento `assign_user_credential` para activar usuarios preexistentes sin passwords por defecto ni compartidos. No modifica V1-V4.
 
 Hibernate opera en modo `validate` (`spring.jpa.hibernate.ddl-auto=validate`): el esquema lo crea y evoluciona exclusivamente Flyway.
 
@@ -132,6 +132,7 @@ La aplicación **no arranca sin secreto JWT válido**: si `PULSEPASS_JWT_SECRET_
 | `PULSEPASS_JWT_SECRET_BASE64` | `pulsepass.security.jwt.secret-base64` | *(sin default)* | **Obligatoria.** Secreto Base64 de ≥32 bytes para firmar/verificar HS256. |
 | — | `pulsepass.security.jwt.issuer` | `pulsepass-api` | Issuer (`iss`) exigido en la validación. |
 | — | `pulsepass.security.jwt.access-token-ttl` | `PT15M` (900 s) | TTL ISO-8601 del access token. |
+| `PULSEPASS_CORS_ALLOWED_ORIGINS` | `pulsepass.security.cors.allowed-origins` | *(vacío)* | Orígenes CORS permitidos, separados por comas. Vacío = ningún origen cross-origin (deny-by-default). |
 
 Ver `.env.example` en la raíz del proyecto.
 
@@ -153,13 +154,32 @@ La cadena es `STATELESS` (sin sesión ni CSRF) y cualquier ruta no listada **exi
 
 **Anti-IDOR**: la propiedad se resuelve con el id del principal (`AuthorizationService`), de modo que el email o el código enviado por el cliente nunca otorgan acceso ajeno. Violación de propiedad sobre un recurso existente → **403**; inexistencia → **404** (sin oráculo de existencia).
 
+### Observabilidad, transporte y CORS (NFR-SEC-006/007/008)
+
+- **Request ID (NFR-SEC-006)**: `RequestIdFilter` genera un identificador por solicitud, lo devuelve en la cabecera `X-Request-Id` y lo correlaciona vía MDC con los logs de cada línea. El login correcto/fallido y cada denegación (`RestAuthenticationEntryPoint` 401, `RestAccessDeniedHandler` 403) se registran con su request id, método, ruta y causa — nunca contraseñas, hashes ni tokens.
+- **Transporte (NFR-SEC-007)**: **HTTPS obligatorio fuera de localhost** y de ambientes de laboratorio aislados; solo en desarrollo local se admite HTTP.
+- **CORS (NFR-SEC-008)**: política parametrizada por `PULSEPASS_CORS_ALLOWED_ORIGINS` (ver tabla de variables). Por defecto la lista está vacía: ningún origen cross-origin queda permitido.
+
+### Roles de prueba (DoD §22)
+
+No existe ningún endpoint público que conceda roles superiores: el registro público asigna `USER` exclusivamente (NFR-SEC-009) y `RegisterUserRequest` no acepta roles.
+
+- **En la suite de pruebas**: la semilla `@BeforeEach` de `SecurityAuthorizationMatrixTest` crea por repositorio a `andrea` y `luis` (`USER`), `pepe` (`STAFF`), `miguel` (`ADMIN`) y `juan` (`USER` desactivado); los tokens se emiten con el `JwtService` real sobre esa identidad persistente.
+- **En una demo local**: asignar el rol con SQL directo sobre la migración V5:
+
+```sql
+INSERT INTO user_roles (user_id, role) VALUES (1, 'ADMIN') ON CONFLICT DO NOTHING;
+```
+
+- **Activación de usuarios preexistentes (§9.2)**: la función `assign_user_credential(user_id, password_hash, role)` de V5 enlaza el hash BCrypt de un usuario legado sin password por defecto ni compartido; hasta ejecutarla ese usuario no puede iniciar sesión (deny-by-default).
+
 ---
 
 ## Ejecución de Pruebas
 
 Para ejecutar la suite completa (pruebas unitarias de servicios y seguridad, pruebas de contrato HTTP de los controllers con `@WebMvcTest`/`MockMvc` con **la cadena de seguridad real activa** —nunca `addFilters=false`— y pruebas de integración sobre PostgreSQL real con Testcontainers): `./mvnw clean test`
 
-La suite incluye la **matriz de autorización T-SEC-001..020** (`SecurityAuthorizationMatrixTest`) con JWTs reales emitidos por el propio `JwtService` y la identidad resuelta desde la base de datos, más `SecurityPersistenceIntegrationTest` (Flyway V5, hash BCrypt y registro atómico). El secreto JWT de pruebas es exclusivo del entorno de test y se inyecta por `@TestPropertySource`; la suite entera es reproducible sin ningún secreto real.
+La suite incluye la **matriz de autorización T-SEC-001..020** (`SecurityAuthorizationMatrixTest`), con los ids exactos de la tabla §17.3 del PRD de seguridad y pruebas complementarias de cobertura §17.4, usando JWTs reales emitidos por el propio `JwtService` y la identidad resuelta desde la base de datos, más `SecurityPersistenceIntegrationTest` (Flyway V5, hash BCrypt, registro atómico y procedimiento de activación de usuarios preexistentes). El secreto JWT de pruebas es exclusivo del entorno de test y se inyecta por `@TestPropertySource`; la suite entera es reproducible sin ningún secreto real.
 
 --> RESPUESTAS A PREGUNTAS TEÓRICAS
 

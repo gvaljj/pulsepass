@@ -1,5 +1,6 @@
 package com.pulsepass.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -7,6 +8,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -15,7 +17,14 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.ExceptionTranslationFilter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 // PRD §16 (SecurityFilterChain stateless) y matriz de autorización §10.
 // Denegación por defecto: cualquier ruta no listada exige autenticación (anyRequest().authenticated()).
@@ -26,15 +35,22 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 @EnableMethodSecurity // refuerzo en métodos de servicio cuando corresponda (PRD §16)
 public class SecurityConfig {
 
+    // NFR-SEC-008: orígenes permitidos para CORS, parametrizados y vacíos por defecto
+    // (deny-by-default: sin la variable de entorno no se habilita ningún origen cross-origin).
+    @Value("${pulsepass.security.cors.allowed-origins:}")
+    private String[] allowedOrigins;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtService jwtService,
                                                    CustomUserDetailsService userDetailsService,
                                                    RestAuthenticationEntryPoint authenticationEntryPoint,
                                                    RestAccessDeniedHandler accessDeniedHandler) throws Exception {
-        // Instanciado aquí (y no como @Bean) para que Spring Boot no lo registre dos veces como
-        // Filter del contenedor: se ejecuta exclusivamente dentro de la cadena de seguridad.
+        // Instanciados aquí (y no como @Bean) para que Spring Boot no los registre dos veces como
+        // Filter del contenedor: se ejecutan exclusivamente dentro de la cadena de seguridad.
         JwtAuthenticationFilter jwtAuthenticationFilter = new JwtAuthenticationFilter(jwtService, userDetailsService);
+        // NFR-SEC-006: inyecta el request ID en el MDC para correlacionar respuesta y logs.
+        RequestIdFilter requestIdFilter = new RequestIdFilter();
 
         http
             // API stateless con Bearer: sin sesión y sin CSRF (PRD §9.4)
@@ -43,6 +59,9 @@ public class SecurityConfig {
             .httpBasic(AbstractHttpConfigurer::disable)
             .logout(AbstractHttpConfigurer::disable)
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // NFR-SEC-008: política CORS parametrizada (pulsepass.security.cors.allowed-origins);
+            // lista vacía por defecto -> ningún origen cross-origin (deny-by-default)
+            .cors(Customizer.withDefaults())
             .authorizeHttpRequests(auth -> auth
                     // --- Públicos (sin token): registro, login y catálogos
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
@@ -77,9 +96,40 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex
                     .authenticationEntryPoint(authenticationEntryPoint)
                     .accessDeniedHandler(accessDeniedHandler))
-            .addFilterBefore(jwtAuthenticationFilter, AuthorizationFilter.class);
+            // Orden: request id -> ExceptionTranslationFilter -> filtro JWT -> autorización. El filtro JWT
+            // se registra primero para que sus posiciones no interfieran; RequestIdFilter se ancla a
+            // ExceptionTranslationFilter (filtro nativo con orden registrado) para que ABARQUE las
+            // denegaciones 401/403: si se situara dentro, su bloque finally limpiaría el MDC antes de
+            // que EntryPoint/DeniedHandler escribieran el log y el requestId se perdería.
+            .addFilterBefore(jwtAuthenticationFilter, AuthorizationFilter.class)
+            .addFilterBefore(requestIdFilter, ExceptionTranslationFilter.class);
 
         return http.build();
+    }
+
+    // NFR-SEC-008: CORS parametrizado y deny-by-default. Se expone como bean CorsConfigurationSource
+    // para que Spring Security lo aplique a la cadena (ver .cors(...)); sin orígenes configurados, el
+    // navegador no recibe cabeceras Access-Control-Allow-Origin y las peticiones cross-origin se bloquean.
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        List<String> origins = Arrays.stream(this.allowedOrigins)
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
+        if (!origins.isEmpty()) {
+            configuration.setAllowedOrigins(origins);
+            // Solo los métodos que expone la API (PRD §10) y los métodos idempotentes de lectura.
+            configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
+            // Cabeceras usadas por la API: autenticación Bearer y JSON.
+            configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+            // El navegador no necesita leer cabeceras de la respuesta, pero X-Request-Id ayuda a
+            // correlacionar incidencias reportadas por el cliente (NFR-SEC-006).
+            configuration.setExposedHeaders(List.of("X-Request-Id"));
+        }
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
     }
 
     // PRD §9.1: contraseñas siempre como hash BCrypt, nunca en claro

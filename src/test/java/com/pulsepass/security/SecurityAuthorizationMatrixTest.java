@@ -51,11 +51,13 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // PRD §17: pruebas de seguridad con los FILTROS ACTIVOS (nunca addFilters=false), identidad real emitida
-// por el propio JwtService contra la base de datos. Cada prueba lleva su id T-SEC-xxx del PRD §17.3.
+// por el propio JwtService contra la base de datos. Los ids T-SEC-001..020 coinciden EXACTAMENTE con la
+// tabla del PRD §17.3 (trazabilidad §18); las pruebas "extra_*" complementan la cobertura §17.4.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
@@ -268,8 +270,17 @@ class SecurityAuthorizationMatrixTest {
     // ---------------------------------------------------------------- T-SEC-001..004: autorización
 
     @Test
-    @DisplayName("T-SEC-001: sin token en ruta protegida -> 401 genérico, sin fuga de información")
-    void tSec001_SinToken_Retorna401Generico() throws Exception {
+    @DisplayName("T-SEC-001: anónimo consulta eventos publicados -> 200")
+    void tSec001_AnonimoEventosPublicados_Retorna200() throws Exception {
+        mockMvc.perform(get("/api/events/published"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].eventCode",
+                        org.hamcrest.Matchers.hasItem("CMF-2026")));
+    }
+
+    @Test
+    @DisplayName("Extra SEC-009: sin token en ruta protegida -> 401 genérico, sin fuga de información")
+    void extra_SinToken_Retorna401Generico() throws Exception {
         mockMvc.perform(get("/api/auth/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401))
@@ -408,40 +419,49 @@ class SecurityAuthorizationMatrixTest {
     }
 
     @Test
-    @DisplayName("T-SEC-011: usuario desactivado DESPUÉS de emitir el token pierde acceso en la siguiente petición")
-    void tSec011_UsuarioDesactivado_PierdeAcceso() throws Exception {
-        String token = tokenFor("andrea");
-        getAs("/api/auth/me", token).andExpect(status().isOk());
-
-        User user = userRepository.findByUsername("andrea").orElseThrow();
-        user.setActive(false);
-        userRepository.save(user);
-
-        getAs("/api/auth/me", token)
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.status").value(401));
+    @DisplayName("T-SEC-011: USER cancela su propio ticket -> 200 si las reglas del Service lo permiten (TKT-05)")
+    void tSec011_UserCancelaTicketPropio_Retorna200() throws Exception {
+        patchAs("/api/tickets/TCK-OWN/cancel", tokenFor("andrea"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
     }
 
     @Test
-    @DisplayName("T-SEC-012: STAFF usa ticket y ADMIN publica; STAFF no crea eventos (matriz completa)")
-    void tSec012_OperacionesPrivilegiadas() throws Exception {
+    @DisplayName("T-SEC-012: USER intenta usar un ticket -> 403 (TKT-06 exige ROLE_STAFF/ADMIN)")
+    void tSec012_UserUsaTicket_Retorna403() throws Exception {
+        patchAs("/api/tickets/TCK-OWN/use", tokenFor("andrea"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    @DisplayName("T-SEC-013: STAFF marca un ticket válido como usado -> 200 (TKT-06)")
+    void tSec013_StaffMarcaTicketUsado_Retorna200() throws Exception {
         patchAs("/api/tickets/TCK-PEPE/use", tokenFor("pepe"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("USED"));
+    }
 
+    @Test
+    @DisplayName("T-SEC-014: ADMIN publica un evento en borrador -> 200 (EVT-04)")
+    void tSec014_AdminPublicaEvento_Retorna200() throws Exception {
         patchAs("/api/events/DRF-2026/publish", tokenFor("miguel"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("PUBLISHED"));
+    }
 
+    @Test
+    @DisplayName("Extra matriz: STAFF creando evento -> 403 (solo ROLE_ADMIN)")
+    void extra_StaffCreaEvento_Retorna403() throws Exception {
         postAs("/api/events", tokenFor("pepe"), eventBody("SEC012-2026"))
                 .andExpect(status().isForbidden());
     }
 
-    // ---------------------------------------------------------------- T-SEC-013..016: registro/login
+    // --------------------------------- Extras: registro y validación (UC-SEC-01, §9.3)
 
     @Test
-    @DisplayName("T-SEC-013: registro y login integrados (UC-SEC-01): 201 -> 200 -> /me con rol USER")
-    void tSec013_RegistroYLoginIntegrados() throws Exception {
+    @DisplayName("Extra UC-SEC-01: registro y login integrados: 201 -> 200 -> /me con rol USER")
+    void extra_RegistroYLoginIntegrados() throws Exception {
         postPublic("/api/users", registerBody("nuevo", "nuevo@email.com", PASSWORD))
                 .andExpect(status().isCreated());
 
@@ -464,8 +484,8 @@ class SecurityAuthorizationMatrixTest {
     }
 
     @Test
-    @DisplayName("T-SEC-014: registro duplicado -> 409; contraseña débil -> 400 (§9.3)")
-    void tSec014_Duplicado409_ContraseñaDebil400() throws Exception {
+    @DisplayName("Extra §9.3: registro duplicado -> 409; contraseña débil -> 400")
+    void extra_Duplicado409_ContraseñaDebil400() throws Exception {
         postPublic("/api/users", registerBody("andrea", "otro@email.com", PASSWORD))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.status").value(409));
@@ -498,8 +518,23 @@ class SecurityAuthorizationMatrixTest {
     }
 
     @Test
-    @DisplayName("T-SEC-016: cuenta desactivada no puede iniciar sesión; el 401 no revela el estado de la cuenta")
-    void tSec016_CuentaDesactivada_NoPuedeLogin() throws Exception {
+    @DisplayName("T-SEC-016: un token válido pertenece a un usuario inactivo -> 401 en la siguiente petición")
+    void tSec016_TokenDeUsuarioInactivo_Retorna401() throws Exception {
+        String token = tokenFor("andrea");
+        getAs("/api/auth/me", token).andExpect(status().isOk());
+
+        User user = userRepository.findByUsername("andrea").orElseThrow();
+        user.setActive(false);
+        userRepository.save(user);
+
+        getAs("/api/auth/me", token)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Extra AUTH-004: cuenta desactivada no puede iniciar sesión; el 401 no revela el estado de la cuenta")
+    void extra_CuentaDesactivada_NoPuedeLogin() throws Exception {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -667,5 +702,64 @@ class SecurityAuthorizationMatrixTest {
         // Vincular el artista al evento recién creado (a CMF-2026 ya estaba vinculado -> 409 por regla)
         postAs("/api/events/REG-A-2026/artists/" + artist.getId(), adminToken).andExpect(status().isOk());
         getAs("/api/tickets/by-user?email=luis@email.com", adminToken).andExpect(status().isOk());
+    }
+
+    // ------------------------------- FR-AUTH-008 (sin sesión) y cobertura por operación (§17.4)
+
+    @Test
+    @DisplayName("FR-AUTH-008: API stateless: login y peticiones protegidas no emiten cookies de sesión (JSESSIONID)")
+    void frAuth008_SinCookiesDeSesion() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"identifier":"andrea","password":"%s"}
+                                """.formatted(PASSWORD)))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Set-Cookie"))
+                // NFR-SEC-006: toda respuesta expone el request id para correlacionarla con los logs
+                .andExpect(header().string("X-Request-Id",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyString())));
+
+        getAs("/api/auth/me", tokenFor("andrea"))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+
+        mockMvc.perform(get("/api/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("Set-Cookie"));
+    }
+
+    @Test
+    @DisplayName("§17.4: anónimo en operaciones privilegiadas -> 401 (publish, artists, use, paid)")
+    void sec174_AnonimoOperacionesPrivilegiadas_Retorna401() throws Exception {
+        mockMvc.perform(patch("/api/events/DRF-2026/publish"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/events/CMF-2026/artists/" + artist.getId()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(patch("/api/tickets/TCK-PEPE/use"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/events/CMF-2026/tickets/paid"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("§17.4: roles y propiedad restantes: ADMIN en paid 200, terceros 403, STAFF ve borrador por código")
+    void sec174_RolesYPropiedad_Restantes() throws Exception {
+        // GET /api/events/*/tickets/paid -> ROLE_ADMIN además de ROLE_STAFF
+        getAs("/api/events/CMF-2026/tickets/paid", tokenFor("miguel"))
+                .andExpect(status().isOk());
+
+        // GET /api/tickets/by-user -> tercero sin propiedad -> 403 (solo dueño o ADMIN)
+        getAs("/api/tickets/by-user?email=luis@email.com", tokenFor("andrea"))
+                .andExpect(status().isForbidden());
+
+        // GET /api/users/by-username -> tercero sin propiedad -> 403
+        getAs("/api/users/by-username?username=andrea", tokenFor("luis"))
+                .andExpect(status().isForbidden());
+
+        // GET /api/events/{code} -> STAFF sí ve el borrador que al anónimo se le oculta con 404 (EVT-02)
+        getAs("/api/events/DRF-2026", tokenFor("pepe"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.eventCode").value("DRF-2026"));
     }
 }
