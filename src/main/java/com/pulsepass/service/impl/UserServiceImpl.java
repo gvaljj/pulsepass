@@ -9,6 +9,7 @@ import com.pulsepass.exception.DuplicateResourceException;
 import com.pulsepass.exception.ResourceNotFoundException;
 import com.pulsepass.mapper.UserMapper;
 import com.pulsepass.repository.UserRepository;
+import com.pulsepass.service.AuthorizationService;
 import com.pulsepass.service.UserService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +21,13 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final UserMapper userMapper;
+    private final AuthorizationService authorizationService;
 
-    public UserServiceImpl(UserRepository userRepository, UserMapper userMapper) {
+    public UserServiceImpl(UserRepository userRepository, UserMapper userMapper,
+                           AuthorizationService authorizationService) {
         this.userRepository = userRepository;
         this.userMapper = userMapper;
+        this.authorizationService = authorizationService;
     }
 
     // BR-USER-004: el registro crea User y UserProfile dentro de la misma transacción
@@ -64,6 +68,8 @@ public class UserServiceImpl implements UserService {
     public UserResponse findByEmail(String email) {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con email: " + email));
+        // USR-02 / T-SEC-015: 404 solo por inexistencia; después, propiedad -> 403 si no es propio ni ADMIN
+        authorizationService.ensureSelfOrAdmin(user.getId());
         return userMapper.toResponse(user);
     }
 
@@ -72,6 +78,8 @@ public class UserServiceImpl implements UserService {
     public UserResponse findByUsername(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado: " + username));
+        // USR-03 / T-SEC-015: mismo criterio de propiedad que findByEmail
+        authorizationService.ensureSelfOrAdmin(user.getId());
         return userMapper.toResponse(user);
     }
 }

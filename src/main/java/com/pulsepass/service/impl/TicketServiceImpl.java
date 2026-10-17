@@ -14,6 +14,7 @@ import com.pulsepass.mapper.TicketMapper;
 import com.pulsepass.repository.EventRepository;
 import com.pulsepass.repository.TicketRepository;
 import com.pulsepass.repository.UserRepository;
+import com.pulsepass.service.AuthorizationService;
 import com.pulsepass.service.TicketService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,15 +36,18 @@ public class TicketServiceImpl implements TicketService {
     private final UserRepository userRepository;
     private final EventRepository eventRepository;
     private final TicketMapper ticketMapper;
+    private final AuthorizationService authorizationService;
 
     public TicketServiceImpl(TicketRepository ticketRepository,
                              UserRepository userRepository,
                              EventRepository eventRepository,
-                             TicketMapper ticketMapper) {
+                             TicketMapper ticketMapper,
+                             AuthorizationService authorizationService) {
         this.ticketRepository = ticketRepository;
         this.userRepository = userRepository;
         this.eventRepository = eventRepository;
         this.ticketMapper = ticketMapper;
+        this.authorizationService = authorizationService;
     }
 
     // Flujo de compra atómico (PRD §24 y §39): usuario -> evento -> edad -> capacidad -> precio -> ticket -> SOLD_OUT
@@ -53,6 +57,9 @@ public class TicketServiceImpl implements TicketService {
         // BR-TICKET-001: usuario existente
         User user = userRepository.findByEmailIgnoreCase(request.userEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("Usuario no encontrado con email: " + request.userEmail()));
+        // TKT-01 / T-SEC-010: el email del DTO debe ser el del PRINCIPAL (id persistente, no un string).
+        // Se comprueba ANTES de cualquier regla de negocio o escritura: 403 y 0 tickets creados.
+        authorizationService.ensureSelf(user.getId());
         // BR-TICKET-002: usuario activo
         if (!Boolean.TRUE.equals(user.getActive())) {
             throw new BusinessRuleException("El usuario está inactivo y no puede comprar tickets");
@@ -105,12 +112,16 @@ public class TicketServiceImpl implements TicketService {
     public TicketResponse findByCode(String ticketCode) {
         Ticket ticket = ticketRepository.findByTicketCode(ticketCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket no encontrado: " + ticketCode));
+        // TKT-02 / T-SEC-009: ticket propio o STAFF/ADMIN (frontera de autorización, no en el Controller)
+        authorizationService.ensureTicketViewer(ticket);
         return ticketMapper.toResponse(ticket);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<TicketResponse> findByUserEmail(String email) {
+        // TKT-03 / T-SEC-015: solo tickets propios o ADMIN; STAFF y emails ajenos -> 403
+        authorizationService.ensureCanQueryUserTickets(email);
         return ticketRepository.findByUserEmailIgnoreCaseOrderByPurchaseDateDesc(email)
                 .stream()
                 .map(ticketMapper::toResponse)
@@ -120,6 +131,8 @@ public class TicketServiceImpl implements TicketService {
     @Override
     @Transactional(readOnly = true)
     public List<TicketResponse> findPaidTicketsByEvent(String eventCode) {
+        // TKT-04 / matriz de autorización: operación de staff (defensa en profundidad tras el filtro de rol)
+        authorizationService.ensurePrivileged();
         return ticketRepository.findByEventEventCodeAndStatus(eventCode, TicketStatus.PAID)
                 .stream()
                 .map(ticketMapper::toResponse)
@@ -132,6 +145,9 @@ public class TicketServiceImpl implements TicketService {
     public TicketResponse cancel(String ticketCode) {
         Ticket ticket = ticketRepository.findByTicketCode(ticketCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket no encontrado: " + ticketCode));
+
+        // TKT-05: cancelación solo del propietario (USER) o ADMIN; STAFF -> 403
+        authorizationService.ensureTicketOwnerOrAdmin(ticket);
 
         // BR-TICKET-010 y BR-TICKET-011: solo se cancela un ticket PAID (no USED ni CANCELLED)
         if (ticket.getStatus() != TicketStatus.PAID) {
@@ -154,6 +170,9 @@ public class TicketServiceImpl implements TicketService {
     public TicketResponse markAsUsed(String ticketCode) {
         Ticket ticket = ticketRepository.findByTicketCode(ticketCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Ticket no encontrado: " + ticketCode));
+
+        // TKT-06: marcar como usado es operación de staff (defensa en profundidad tras el filtro de rol)
+        authorizationService.ensurePrivileged();
 
         if (ticket.getStatus() != TicketStatus.PAID) {
             throw new BusinessRuleException("Solo se puede marcar como usado un ticket en estado PAID");

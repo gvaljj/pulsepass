@@ -1,9 +1,13 @@
 package com.pulsepass.exception;
 
 import com.pulsepass.dto.response.ErrorResponse;
+import com.pulsepass.security.SecurityErrorMessages;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -52,6 +56,23 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), Map.of());
+    }
+
+    // §14 / PRD §9.3: credenciales o token inválidos -> 401 con mensaje GENÉRICO.
+    // Nunca distingue usuario inexistente, contraseña incorrecta ni cuenta inactiva (AUTH-004).
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex) {
+        String message = ex instanceof BadCredentialsException
+                ? SecurityErrorMessages.INVALID_CREDENTIALS
+                : SecurityErrorMessages.UNAUTHENTICATED;
+        return build(HttpStatus.UNAUTHORIZED, message, Map.of());
+    }
+
+    // PRD §9.4: autenticado sin permisos sobre el recurso -> 403 con el mensaje estándar del PRD
+    // (mismo cuerpo que escribe RestAccessDeniedHandler cuando la denegación nace en el filtro).
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(AccessDeniedException ex) {
+        return build(HttpStatus.FORBIDDEN, SecurityErrorMessages.ACCESS_DENIED, Map.of());
     }
 
     // §14: error inesperado -> 500 sin exponer stack traces ni detalles internos (NFR-CTRL-007)

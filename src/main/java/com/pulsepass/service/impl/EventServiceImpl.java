@@ -14,6 +14,7 @@ import com.pulsepass.mapper.EventMapper;
 import com.pulsepass.repository.ArtistRepository;
 import com.pulsepass.repository.EventRepository;
 import com.pulsepass.repository.VenueRepository;
+import com.pulsepass.service.AuthorizationService;
 import com.pulsepass.service.EventService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,15 +29,18 @@ public class EventServiceImpl implements EventService {
     private final VenueRepository venueRepository;
     private final ArtistRepository artistRepository;
     private final EventMapper eventMapper;
+    private final AuthorizationService authorizationService;
 
     public EventServiceImpl(EventRepository eventRepository,
                             VenueRepository venueRepository,
                             ArtistRepository artistRepository,
-                            EventMapper eventMapper) {
+                            EventMapper eventMapper,
+                            AuthorizationService authorizationService) {
         this.eventRepository = eventRepository;
         this.venueRepository = venueRepository;
         this.artistRepository = artistRepository;
         this.eventMapper = eventMapper;
+        this.authorizationService = authorizationService;
     }
 
     // BR-EVENT-001..006: creación de evento con estado inicial DRAFT (BR-EVENT-005)
@@ -74,6 +78,9 @@ public class EventServiceImpl implements EventService {
     public EventResponse findByCode(String eventCode) {
         Event event = eventRepository.findByEventCode(eventCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Evento no encontrado: " + eventCode));
+        // EVT-02 / T-SEC-017: los borradores solo son visibles para STAFF/ADMIN; para el resto
+        // la respuesta es idéntica a la de un evento inexistente (no se revela el borrador).
+        authorizationService.ensureEventVisible(event);
         return eventMapper.toResponse(event);
     }
 
@@ -139,8 +146,14 @@ public class EventServiceImpl implements EventService {
     @Override
     @Transactional(readOnly = true)
     public List<EventSummaryResponse> findByArtist(String stageName) {
-        return eventRepository.findByArtistStageName(stageName)
-                .stream()
+        List<Event> events = eventRepository.findByArtistStageName(stageName);
+        // EVT-06 / T-SEC-017: búsqueda pública -> solo eventos PUBLISHED; STAFF/ADMIN ven el resto.
+        if (!authorizationService.isPrivileged()) {
+            events = events.stream()
+                    .filter(event -> event.getStatus() == EventStatus.PUBLISHED)
+                    .toList();
+        }
+        return events.stream()
                 .map(eventMapper::toSummary)
                 .toList();
     }
