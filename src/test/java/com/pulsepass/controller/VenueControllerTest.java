@@ -2,11 +2,13 @@ package com.pulsepass.controller;
 
 import com.pulsepass.dto.response.VenueResponse;
 import com.pulsepass.exception.ResourceNotFoundException;
+import com.pulsepass.security.SecurityTestConfiguration;
 import com.pulsepass.service.VenueService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -18,7 +20,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// PRD §17.4: se importa la cadena de seguridad real; /api/venues/** es público (sin identidad requerida).
 @WebMvcTest(VenueController.class)
+@Import(SecurityTestConfiguration.class)
 class VenueControllerTest {
 
     @Autowired

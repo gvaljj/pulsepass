@@ -5,6 +5,7 @@ import com.pulsepass.domain.enums.EventStatus;
 import com.pulsepass.domain.enums.TicketStatus;
 import com.pulsepass.domain.enums.TicketType;
 import com.pulsepass.domain.model.*;
+import com.pulsepass.security.SecurityTestConfiguration;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -28,6 +30,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @SpringBootTest
 @Testcontainers
 @Transactional
+// PRD §9.1: clave exclusiva del entorno de test (la aplicación no arranca sin secreto).
+@TestPropertySource(properties =
+        "pulsepass.security.jwt.secret-base64=" + SecurityTestConfiguration.TEST_SECRET_BASE64)
 class PulsePassIntegrationTests {
 
     @Container

@@ -8,6 +8,7 @@ import com.pulsepass.exception.BusinessRuleException;
 import com.pulsepass.exception.DuplicateResourceException;
 import com.pulsepass.mapper.UserMapper;
 import com.pulsepass.repository.UserRepository;
+import com.pulsepass.service.AuthorizationService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,9 @@ class UserServiceImplTest {
     private UserRepository userRepository;
     @Mock
     private UserMapper userMapper;
+    // Fase 4: la frontera de autorización se inyecta en el Service (mock = no-op en estas pruebas de reglas)
+    @Mock
+    private AuthorizationService authorizationService;
 
     @InjectMocks
     private UserServiceImpl userService;
@@ -39,7 +43,7 @@ class UserServiceImplTest {
     private RegisterUserRequest request() {
         return new RegisterUserRequest(
                 "andrea", "andrea@email.com", "Andrea", "Gomez",
-                "300", "Santa Marta", LocalDate.now().minusYears(25));
+                "300", "Santa Marta", LocalDate.now().minusYears(25), "Segura#2026x");
     }
 
     // TEST-USER-001: registrar usuario válido crea User y UserProfile
@@ -94,7 +98,7 @@ class UserServiceImplTest {
     void register_FutureBirthDate_Throws() {
         RegisterUserRequest future = new RegisterUserRequest(
                 "andrea", "andrea@email.com", "Andrea", "Gomez",
-                "300", "Santa Marta", LocalDate.now().plusDays(1));
+                "300", "Santa Marta", LocalDate.now().plusDays(1), "Segura#2026x");
         when(userRepository.existsByUsername("andrea")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("andrea@email.com")).thenReturn(false);
 

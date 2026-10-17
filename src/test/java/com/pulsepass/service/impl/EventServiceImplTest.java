@@ -15,6 +15,7 @@ import com.pulsepass.mapper.EventMapper;
 import com.pulsepass.repository.ArtistRepository;
 import com.pulsepass.repository.EventRepository;
 import com.pulsepass.repository.VenueRepository;
+import com.pulsepass.service.AuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,9 @@ class EventServiceImplTest {
     private ArtistRepository artistRepository;
     @Mock
     private EventMapper eventMapper;
+    // Fase 4: visibilidad de borradores delegada en la frontera de autorización (mock = no-op por defecto)
+    @Mock
+    private AuthorizationService authorizationService;
 
     @InjectMocks
     private EventServiceImpl eventService;
@@ -251,8 +255,9 @@ class EventServiceImplTest {
 
     // findByArtist: retorna resúmenes
     @Test
-    @DisplayName("findByArtist: retorna los resúmenes de eventos del artista")
+    @DisplayName("findByArtist: retorna los resúmenes de eventos publicados del artista")
     void findByArtist_ReturnsSummaries() {
+        event.setStatus(EventStatus.PUBLISHED); // la búsqueda pública solo expone eventos publicados (EVT-06)
         EventSummaryResponse summary = new EventSummaryResponse(
                 1L, "CMF-2026", "Caribbean Music Fest 2026",
                 EventCategory.MUSIC, EventStatus.PUBLISHED, event.getEventDate(), "VEN-01");
@@ -263,5 +268,25 @@ class EventServiceImplTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).eventCode()).isEqualTo("CMF-2026");
+    }
+
+    // EVT-06 / T-SEC-017: los borradores no se exponen a identidades no privilegiadas
+    @Test
+    @DisplayName("findByArtist: excluye borradores para identidades no privilegiadas y los muestra a STAFF/ADMIN")
+    void findByArtist_HidesDraftsFromPublicUsers() {
+        // event del setUp está en DRAFT
+        when(eventRepository.findByArtistStageName("Solar Beat")).thenReturn(List.of(event));
+
+        // sin privilegio (mock por defecto false): el borrador se filtra
+        assertThat(eventService.findByArtist("Solar Beat")).isEmpty();
+
+        // STAFF/ADMIN (isPrivileged = true): sí ve el borrador
+        when(authorizationService.isPrivileged()).thenReturn(true);
+        EventSummaryResponse summary = new EventSummaryResponse(
+                1L, "CMF-2026", "Caribbean Music Fest 2026",
+                EventCategory.MUSIC, EventStatus.DRAFT, event.getEventDate(), "VEN-01");
+        when(eventMapper.toSummary(event)).thenReturn(summary);
+
+        assertThat(eventService.findByArtist("Solar Beat")).hasSize(1);
     }
 }

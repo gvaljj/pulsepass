@@ -17,6 +17,7 @@ import com.pulsepass.mapper.TicketMapper;
 import com.pulsepass.repository.EventRepository;
 import com.pulsepass.repository.TicketRepository;
 import com.pulsepass.repository.UserRepository;
+import com.pulsepass.service.AuthorizationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,9 @@ class TicketServiceImplTest {
     private EventRepository eventRepository;
     @Mock
     private TicketMapper ticketMapper;
+    // Fase 4: controles anti-IDOR delegados en la frontera de autorización (mock = no-op en reglas de negocio)
+    @Mock
+    private AuthorizationService authorizationService;
 
     @InjectMocks
     private TicketServiceImpl ticketService;
