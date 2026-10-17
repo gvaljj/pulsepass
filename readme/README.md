@@ -9,6 +9,9 @@ Caso de estudio académico enfocado en la capa de persistencia, integridad refer
 - **Spring Web / MVC (API REST)**
 - **Bean Validation**
 - **Spring Data JPA / Hibernate**
+- **Spring Security** (cadenas de seguridad stateless, deny-by-default)
+- **JJWT 0.13.x** (JSON Web Tokens HS256)
+- **BCrypt** (hash de contraseñas)
 - **PostgreSQL**
 - **Flyway** (Gestión de migraciones)
 - **Testcontainers** (Pruebas de integración sobre PostgreSQL real)
@@ -23,6 +26,7 @@ La base de datos se versiona a través de Flyway en `src/main/resources/db/migra
 2. `V2__insert_initial_artists.sql`: Inserción del catálogo inicial de artistas.
 3. `V3__add_streaming_url_to_event.sql`: Evolución del esquema para soportar URLs de streaming en eventos.
 4. `V4__add_fk_indexes.sql`: Índices sobre columnas foráneas consultadas frecuentemente (`events.venue_id`, `user_profiles.user_id`, `tickets.user_id`, `tickets.event_id`).
+5. `V5__security_credentials_roles.sql`: Migración incremental de la capa de seguridad: tablas `user_credentials` (hash BCrypt por usuario, sin contraseñas en claro) y `user_roles` (asignación usuario↔rol con clave compuesta). No modifica V1-V4.
 
 Hibernate opera en modo `validate` (`spring.jpa.hibernate.ddl-auto=validate`): el esquema lo crea y evoluciona exclusivamente Flyway.
 
@@ -57,6 +61,8 @@ La capa de controladores expone los 20 métodos de los Services como una API RES
 
 | Método | Ruta | Descripción | Éxito | Requisito |
 |---|---|---|---|---|
+| POST | `/api/auth/login` | Login por username o email (público) | 200 / 400 / 401 | FR-CTRL-AUTH-001 |
+| GET | `/api/auth/me` | Identidad vigente del token | 200 / 401 | FR-CTRL-AUTH-002 |
 | GET | `/api/venues/{code}` | Venue por código | 200 / 404 | FR-CTRL-VEN-001 |
 | GET | `/api/venues/active` | Venues activos | 200 | FR-CTRL-VEN-002 |
 | POST | `/api/events` | Crear evento | 201 / 400 | FR-CTRL-EVT-001 |
@@ -94,6 +100,8 @@ Todos los errores devuelven un `ErrorResponse` JSON uniforme (`timestamp`, `stat
 
 | Condición | Código | Origen |
 |---|---|---|
+| Token ausente/inválido o login fallido | 401 | `AuthenticationEntryPoint` / `AuthService` |
+| Autenticado sin permisos sobre el recurso | 403 | `AccessDeniedHandler` / `AuthorizationService` |
 | Request inválido (Bean Validation) | 400 | `MethodArgumentNotValidException` |
 | JSON mal formado | 400 | `HttpMessageNotReadableException` |
 | Recurso inexistente | 404 | `ResourceNotFoundException` |
@@ -103,9 +111,55 @@ Todos los errores devuelven un `ErrorResponse` JSON uniforme (`timestamp`, `stat
 
 ---
 
+## Capa de Seguridad (Spring Security + JJWT)
+
+La Fase 4 añade autenticación stateless con JWT y autorización deny-by-default sobre toda la API.
+
+### Autenticación (JWT HS256)
+
+- **Registro** (`POST /api/users`, público): `AuthService` crea usuario + perfil + hash BCrypt de la contraseña + rol `USER` en **una sola transacción** (`@Transactional`). La contraseña nunca se persiste en claro: solo su hash en `user_credentials` (migración V5). BCrypt limita la contraseña a 12-72 caracteres.
+- **Login** (`POST /api/auth/login`, público): acepta username o email en `identifier`. Cualquier fallo (usuario inexistente, contraseña incorrecta o cuenta desactivada) produce **el mismo 401 genérico** (`"Credenciales inválidas"`), sin revelar existencia de usuarios ni estado de la cuenta.
+- **Token**: JWT firmado con **HS256** (JJWT 0.13.x) con los claims `sub` (id persistente del usuario), `iss` (`pulsepass-api`), `iat`, `exp` y `jti`. TTL por defecto **900 s** (`pulsepass.security.jwt.access-token-ttl`, ISO-8601).
+- **Filtro** (`JwtAuthenticationFilter`): lee únicamente el header `Authorization: Bearer <token>`; valida firma, expiración y issuer; **reconstruye la identidad desde la base de datos** en cada petición (roles y estado vigentes: un token de un usuario desactivado deja de servir). Un token inválido/expirado/firmado mal se descarta y la cadena continúa: en rutas protegidas responde el `AuthenticationEntryPoint` con 401 uniforme. Nunca sobrescribe una autenticación previa; una doble cabecera `Authorization` se trata como solicitud ambigua y no autentica.
+- **Identidad**: `/api/auth/me` devuelve el `SecurityPrincipal` vigente del token (id, username, email, roles `ROLE_*`, estado activo).
+
+### Configuración obligatoria (falla de arranque si falta)
+
+La aplicación **no arranca sin secreto JWT válido**: si `PULSEPASS_JWT_SECRET_BASE64` falta o decodifica a menos de 32 bytes, `JwtProperties` lanza `IllegalStateException` durante el arranque (deny-by-default).
+
+| Variable de entorno | Propiedad | Default | Descripción |
+|---|---|---|---|
+| `PULSEPASS_JWT_SECRET_BASE64` | `pulsepass.security.jwt.secret-base64` | *(sin default)* | **Obligatoria.** Secreto Base64 de ≥32 bytes para firmar/verificar HS256. |
+| — | `pulsepass.security.jwt.issuer` | `pulsepass-api` | Issuer (`iss`) exigido en la validación. |
+| — | `pulsepass.security.jwt.access-token-ttl` | `PT15M` (900 s) | TTL ISO-8601 del access token. |
+
+Ver `.env.example` en la raíz del proyecto.
+
+### Matriz de autorización (deny-by-default)
+
+La cadena es `STATELESS` (sin sesión ni CSRF) y cualquier ruta no listada **exige autenticación**. La propiedad (¿es suyo el recurso?) se comprueba en la capa de Services con el id persistente del token, nunca con el email del cliente:
+
+| Rutas | Requisito |
+|---|---|
+| `POST /api/auth/login`, `POST /api/users` | Público |
+| `GET /api/venues/**`, `GET /api/artists/**`, `GET /api/events/published`, `GET /api/events/by-artist`, `GET /api/events/{code}` | Público (los borradores se ocultan con respuesta 404 idéntica a la de un inexistente) |
+| `GET /api/auth/me` | Autenticado |
+| `POST /api/events`, `PATCH /api/events/*/publish`, `POST /api/events/*/artists/*` | `ROLE_ADMIN` |
+| `GET /api/events/*/tickets/paid`, `PATCH /api/tickets/*/use` | `ROLE_STAFF` o `ROLE_ADMIN` |
+| `POST /api/tickets` | `ROLE_USER` + el `userEmail` debe ser el propio (anti-IDOR) |
+| `GET /api/tickets/{code}`, `GET /api/tickets/by-user`, `PATCH /api/tickets/*/cancel` | Autenticado + propiedad (propietario o `ROLE_ADMIN`; `STAFF` queda excluido de cancelar) |
+| `GET /api/users/by-email`, `GET /api/users/by-username` | Autenticado + propiedad (o `ROLE_ADMIN`) |
+| Cualquier otra ruta | Autenticado |
+
+**Anti-IDOR**: la propiedad se resuelve con el id del principal (`AuthorizationService`), de modo que el email o el código enviado por el cliente nunca otorgan acceso ajeno. Violación de propiedad sobre un recurso existente → **403**; inexistencia → **404** (sin oráculo de existencia).
+
+---
+
 ## Ejecución de Pruebas
 
-Para ejecutar la suite completa (pruebas unitarias de servicios, pruebas de contrato HTTP de los controllers con `@WebMvcTest`/`MockMvc` y pruebas de integración sobre PostgreSQL real con Testcontainers): ./mvnw clean test
+Para ejecutar la suite completa (pruebas unitarias de servicios y seguridad, pruebas de contrato HTTP de los controllers con `@WebMvcTest`/`MockMvc` con **la cadena de seguridad real activa** —nunca `addFilters=false`— y pruebas de integración sobre PostgreSQL real con Testcontainers): `./mvnw clean test`
+
+La suite incluye la **matriz de autorización T-SEC-001..020** (`SecurityAuthorizationMatrixTest`) con JWTs reales emitidos por el propio `JwtService` y la identidad resuelta desde la base de datos, más `SecurityPersistenceIntegrationTest` (Flyway V5, hash BCrypt y registro atómico). El secreto JWT de pruebas es exclusivo del entorno de test y se inyecta por `@TestPropertySource`; la suite entera es reproducible sin ningún secreto real.
 
 --> RESPUESTAS A PREGUNTAS TEÓRICAS
 
