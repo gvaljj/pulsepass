@@ -83,7 +83,7 @@ indiscriminada»).
 | Requisito | Caso(s) | Ruta(s) | Resultado | Nota / evidencia (§18) |
 |---|---|---|---|---|
 | FR-E2E-001 Colección PM v2.1 | Inspección de carpetas y peticiones | 22/22 rutas presentes | NOT RUN | 10 carpetas §10.1, 114 peticiones; falta importación en Postman |
-| FR-E2E-002 Entorno parametrizable | `PRE-00` + revisión de ambiente | Todas vía `{{baseUrl}}` | NOT RUN | `PulsePass-local.postman_environment.json` (32 vars, secretos vacíos) |
+| FR-E2E-002 Entorno parametrizable | `PRE-00` + revisión de ambiente | Todas vía `{{baseUrl}}` | NOT RUN | `PulsePass-local.postman_environment.json` (32 vars; contraseñas y tokens vacíos) |
 | FR-E2E-003 Autenticación manual | `TC-AUTH-001`–`005` | `POST /api/users`, `POST /api/auth/login` | NOT RUN | §12.1/§12.2: 201→200, copia manual de `accessToken` |
 | FR-E2E-004 Token por actor | `TC-AUTH-006/006B/006S/006A` | `GET /api/auth/me` | NOT RUN | Variables separadas `userAToken`, `userBToken`, `staffToken`, `adminToken` |
 | FR-E2E-005 Comprobación manual | Todas (descripción §10.2 con HTTP esperado) | 22 rutas | NOT RUN | Cada petición declara ID, objetivo, esperado, revisión y evidencia |
@@ -106,6 +106,7 @@ indiscriminada»).
 | NFR-E2E-005 Diagnóstico | Bitácora con actor y escenario | — | NOT RUN | Sin datos sensibles en las columnas |
 | NFR-E2E-006 Integridad | Relecturas de `TC-SEC-003/008`–`012` | Filas 15, 17–22 | NOT RUN | Ausencia de mutación persistida tras cada denegación |
 | NFR-E2E-007 Compatibilidad | `git status` de `src/` | — | NOT RUN | Esta fase no modifica la API ni `src/` |
+| NFR-E2E-008 Eficiencia | `checklist-e2e-manual.md` (Flujos A–E en orden, sin pasos repetidos) | Todas | NOT RUN | Secuencia única por flujo + relectura de precondiciones en cada transición/denegación (C10, D7, D10, D11, D16); reglas de re-login y de re-ejecución en `README.md` §6/§11 |
 
 ---
 

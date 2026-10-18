@@ -2,7 +2,7 @@
 #
 # En el repo quedan SOLO estos artefactos Postman, ambos sin secretos:
 #   postman/PulsePass-Manual-E2E.postman_collection.json  (v2.1, sin scripts)
-#   postman/PulsePass-local.postman_environment.json      (secretos vacíos)
+#   postman/PulsePass-local.postman_environment.json      (contraseñas y tokens vacíos)
 #
 # Si exportas la colección o el ambiente desde Postman tras una corrida local,
 # guárdalos con sufijo .local para que git los excluya: jamás se versionan

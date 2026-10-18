@@ -78,8 +78,8 @@ valores (búsqueda y reemplazo).
 | `userAEmail`, `userAUsername` | environment | `usera-{{runId}}@example.test`, `usera-{{runId}}` |
 | `userAPassword`, `userBPassword` | environment (secret) | **Local**: contraseña ≥ 12 caracteres que elijas tú; nunca la de otro entorno |
 | `userBEmail`, `userBUsername` | environment | `userb-{{runId}}@example.test`, `userb-{{runId}}` |
-| `adminIdentifier`, `adminPassword` | environment | `admin-{{runId}}` + contraseña local (fixture: registro + promoción SQL) |
-| `staffIdentifier`, `staffPassword` | environment | `staff-{{runId}}` + contraseña local (fixture: registro + promoción SQL) |
+| `adminIdentifier`, `adminPassword` | environment (secret) | `admin-{{runId}}` + contraseña local (fixture: registro + promoción SQL) |
+| `staffIdentifier`, `staffPassword` | environment (secret) | `staff-{{runId}}` + contraseña local (fixture: registro + promoción SQL) |
 | `userAToken`, `userBToken`, `staffToken`, `adminToken` | environment (secret) | Se rellenan **a mano** copiando `accessToken` tras cada login |
 | `expiredToken`, `foreignToken`, `inactiveToken` | environment (secret) | Se generan a mano (§6 de `fixtures/README.md`); vacías por defecto |
 | `venueActiveCode` | environment | `VEN-E2E-PRINCIPAL` (seed) |
