@@ -1,0 +1,17 @@
+# tests/e2e/.gitignore — exclusiones locales de la Fase 5 (NFR-E2E-002).
+#
+# En el repo quedan SOLO estos artefactos Postman, ambos sin secretos:
+#   postman/PulsePass-Manual-E2E.postman_collection.json  (v2.1, sin scripts)
+#   postman/PulsePass-local.postman_environment.json      (secretos vacíos)
+#
+# Si exportas la colección o el ambiente desde Postman tras una corrida local,
+# guárdalos con sufijo .local para que git los excluya: jamás se versionan
+# tokens, contraseñas, hashes BCrypt ni secretos JWT.
+
+*.postman_collection.local.json
+*.postman_environment.local.json
+postman/*.local.json
+
+# Copias locales del seed con el runId ya sustituido (el template es el único
+# archivo SQL versionado).
+fixtures/seed-e2e.local.sql

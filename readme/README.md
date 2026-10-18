@@ -181,6 +181,32 @@ Para ejecutar la suite completa (pruebas unitarias de servicios y seguridad, pru
 
 La suite incluye la **matriz de autorización T-SEC-001..020** (`SecurityAuthorizationMatrixTest`), con los ids exactos de la tabla §17.3 del PRD de seguridad y pruebas complementarias de cobertura §17.4, usando JWTs reales emitidos por el propio `JwtService` y la identidad resuelta desde la base de datos, más `SecurityPersistenceIntegrationTest` (Flyway V5, hash BCrypt, registro atómico y procedimiento de activación de usuarios preexistentes). El secreto JWT de pruebas es exclusivo del entorno de test y se inyecta por `@TestPropertySource`; la suite entera es reproducible sin ningún secreto real.
 
+---
+
+## Pruebas E2E manuales (Fase 5)
+
+La Fase 5 (PRD `5_PRD_PulsePass_Pruebas_E2E_Postman_Manual`) valida la API completa con **pruebas end-to-end manuales desde Postman**: envíos individuales con el botón *Send*, inspección visual de Status/Headers/Body y resultados anotados en una bitácora. La colección **no contiene ningún script** (0 claves `event`, sin Pre-request ni Tests), no se usa Collection Runner, Newman ni Postman CLI, y ningún secreto se versiona (NFR-E2E-002). No se modificó `src/`: esta fase es de verificación, no de implementación (§2.4).
+
+### Entregables (`tests/e2e/`)
+
+| Archivo | Contenido |
+|---|---|
+| `README.md` | Preparación del ambiente (BD `pulsepass_e2e`, seed, JWT), tablas de las 32 variables, copia manual de tokens/códigos, política 403/404 y problemas frecuentes. |
+| `postman/PulsePass-Manual-E2E.postman_collection.json` | Colección v2.1: 10 carpetas del §10.1, 114 peticiones, cada descripción con la convención §10.2 (ID, objetivo, precondiciones, autorización, ejecución, HTTP esperado, revisión manual, evidencia). |
+| `postman/PulsePass-local.postman_environment.json` | Plantilla de variables (§11): datos, códigos, tokens como variables locales vacías y secretos de runtime nunca exportados. |
+| `fixtures/seed-e2e.sql` + `fixtures/README.md` | Fixtures repetibles (venues, eventos PUB/DRAFT, cuentas STAFF/ADMIN/inactiva) y procedimientos fuera de HTTP: promoción de roles por SQL, desactivación y generación offline de `expiredToken`/`foreignToken`. |
+| `checklist-e2e-manual.md` | Orden de ejecución de los flujos obligatorios A–E (§9) con esperado por paso. |
+| `registro-ejecucion-manual.md` | Bitácora §16.2 con los 69 casos (22 de rutas §7 + 15 TC-AUTH + 17 TC-SEC + 15 TC-BIZ) en `NOT RUN`, listos para rellenar HTTP observado y PASS/FAIL/BLOCKED. |
+| `matriz-cobertura.md` | Matriz 22 rutas × 5 actores y trazabilidad requisito → caso → ruta → resultado (DoD §24.13, §25.7), con la justificación de 403 vs 404. |
+
+### Ejecución resumida
+
+1. Levantar PostgreSQL dedicado `pulsepass_e2e` y la app con `SPRING_DATASOURCE_*` y `PULSEPASS_JWT_SECRET_BASE64` propios del E2E; aplicar Flyway y `seed-e2e.sql` (§2–§3 de `tests/e2e/README.md`).
+2. Importar colección y ambiente en Postman, elegir `runId` y contraseñas locales; registrar usuarios A/B y hacer login de A, B, STAFF y ADMIN copiando cada `accessToken` a su variable.
+3. Recorrer `checklist-e2e-manual.md` en orden (Flujos A–E) y anotar cada caso en `registro-ejecucion-manual.md`; al cerrar, consolidar 22/22 rutas y actualizar `matriz-cobertura.md`.
+
+La definición de terminación es el checklist de 13 puntos del §24 de ese PRD (documentado en `tests/e2e/README.md`): ningún caso sin resultado explícito y ningún `NOT RUN`/`BLOCKED` contado como aprobado.
+
 --> RESPUESTAS A PREGUNTAS TEÓRICAS
 
 1. ¿Por qué Ticket debe ser una entidad en lugar de una relación @ManyToMany simple entre User y Event?
