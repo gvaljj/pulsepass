@@ -49,8 +49,8 @@ Las consultas simples usan **Query Methods** de Spring Data; las complejas usan 
 | TicketRepository | `findByTicketCode` | Query Method (devuelve `Optional`) | FR-TKT-002 |
 | TicketRepository | `findByUserEmail` / `findByUserEmailAndStatus` | Query Method | FR-TKT-006 |
 | TicketRepository | `findByEventEventCodeAndStatus` | Query Method | FR-TKT-007 |
-| TicketRepository | `countPaidTicketsByEventCode` | JPQL COUNT | FR-TKT-008 |
-| TicketRepository | `findTicketsForFutureEvents` | JPQL + ORDER BY | FR-SRC-004 |
+| TicketRepository | `countByEventEventCodeAndStatus` | JPQL COUNT | FR-TKT-008 |
+| TicketRepository | `findTicketsForFutureEvents` | JPQL + ORDER BY cronológico | FR-SRC-004 |
 | ArtistRepository | `findByStageName` | Query Method | FR-ART-002 |
 
 ---
@@ -103,11 +103,15 @@ Todos los errores devuelven un `ErrorResponse` JSON uniforme (`timestamp`, `stat
 | Token ausente/inválido o login fallido | 401 | `AuthenticationEntryPoint` / `AuthService` |
 | Autenticado sin permisos sobre el recurso | 403 | `AccessDeniedHandler` / `AuthorizationService` |
 | Request inválido (Bean Validation) | 400 | `MethodArgumentNotValidException` |
+| Parámetro obligatorio ausente | 400 | `MissingServletRequestParameterException` |
+| Tipo de variable de ruta/query inválido | 400 | `MethodArgumentTypeMismatchException` |
 | JSON mal formado | 400 | `HttpMessageNotReadableException` |
 | Recurso inexistente | 404 | `ResourceNotFoundException` |
 | Recurso duplicado | 409 | `DuplicateResourceException` |
 | Regla de negocio incumplida | 409 | `BusinessRuleException` |
 | Error inesperado (sin stack traces) | 500 | `Exception` (NFR-CTRL-007) |
+
+> `TicketController` usa `@RequestMapping("/api")` porque cubre dos familias de rutas: `/api/tickets/**` y `/api/events/{eventCode}/tickets/paid`. Cada método declara el recurso completo sin alterar el contrato HTTP.
 
 ---
 
@@ -228,7 +232,7 @@ La definición de terminación es el checklist de 13 puntos del §24 de ese PRD 
 
 3. ¿Qué consultas pueden expresarse claramente como Query Methods y cuáles justifican JPQL?
 ## Query Methods: Son ideales para operaciones sencillas basadas en propiedades directas o navegaciones de relaciones simples sin ambigüedad (ej. findByCode, findByStatusOrderByEventDateAsc o findByUserEmailAndStatus).
-## JPQL: Se justifica cuando la consulta requiere operaciones avanzadas de agregación (COUNT), funciones escalar/de texto (LOWER, CONCAT), relaciones N:M con múltiples JOIN, filtros dinámicos o la palabra clave DISTINCT para evitar duplicados en la colección de resultados (ej. findRecommendedEvents o countPaidTicketsByEventCode).
+## JPQL: Se justifica cuando la consulta requiere operaciones avanzadas de agregación (COUNT), funciones escalar/de texto (LOWER, CONCAT), relaciones N:M con múltiples JOIN, filtros dinámicos o la palabra clave DISTINCT para evitar duplicados en la colección de resultados (ej. findRecommendedEvents o countByEventEventCodeAndStatus).
 
 4. ¿Qué consecuencias tendría modificar V1__create_schema.sql después de haberla aplicado en un ambiente compartido?
 ## Alterar un archivo de migración ya ejecutado corrompe el hash de suma de comprobación (checksum) que Flyway almacena en la tabla flyway_schema_history. Al intentar desplegar nuevamente la aplicación, Flyway detectará una discrepancia de integridad y detendrá el arranque con un error de migración. En entornos compartidos o productivos, cualquier cambio estructural debe agregarse mediante un nuevo archivo de migración incremental (ej. V4__...sql).

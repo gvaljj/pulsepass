@@ -21,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -217,5 +218,19 @@ class EventControllerTest {
                 .andExpect(jsonPath("$[0].eventCode").value("CMF-2026"));
 
         verify(eventService).findByArtist("Solar Beat");
+    }
+
+    // PRD §14: parámetro obligatorio ausente -> 400 con ErrorResponse, sin invocar el Service
+    @Test
+    void findByArtist_SinStageName_Returns400() throws Exception {
+        mockMvc.perform(get("/api/events/by-artist"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.details.stageName").exists());
+
+        verify(eventService, never()).findByArtist(anyString());
     }
 }

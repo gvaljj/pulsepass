@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -65,6 +66,9 @@ class PulsePassIntegrationTests {
 
     @Autowired
     private TicketRepository ticketRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Test
     @DisplayName("AC-001: Registrar Venue válido y recuperarlo por código")
@@ -317,6 +321,193 @@ class PulsePassIntegrationTests {
         assertThat(allTickets).hasSize(3);
         assertThat(reservedTickets).hasSize(1);
         assertThat(reservedTickets.get(0).getStatus()).isEqualTo(TicketStatus.RESERVED);
+    }
+
+    @Test
+    @DisplayName("FR-VEN-004: Eventos asociados a un venue por su código")
+    void testEventosPorVenueCode() {
+        Venue venue = venueRepository.save(new Venue("VEN-Q004", "Arena Sur", "Cali", "Calle 1 #2-3", 3000));
+        Venue other = venueRepository.save(new Venue("VEN-Q004B", "Arena Norte", "Bogotá", "Calle 4 #5-6", 4000));
+
+        crearEvento("VENQ-1", "Evento Uno", EventStatus.PUBLISHED, LocalDateTime.now().plusDays(10), venue);
+        crearEvento("VENQ-2", "Evento Dos", EventStatus.DRAFT, LocalDateTime.now().plusDays(20), venue);
+        crearEvento("VENQ-3", "Evento Tres", EventStatus.PUBLISHED, LocalDateTime.now().plusDays(30), other);
+
+        List<Event> events = eventRepository.findByVenueCode("VEN-Q004");
+
+        assertThat(events).extracting(Event::getEventCode)
+                .containsExactlyInAnyOrder("VENQ-1", "VENQ-2");
+    }
+
+    @Test
+    @DisplayName("FR-SRC-002: Eventos por ciudad y artista")
+    void testEventosPorCiudadYArtista() {
+        Venue santaMarta = venueRepository.save(new Venue("VEN-S002", "Convention Pier", "Santa Marta", "Calle 1 #2-3", 5000));
+        Venue bogota = venueRepository.save(new Venue("VEN-B002", "Arena Sabana", "Bogotá", "Av 68 #24-15", 25000));
+        Artist solarBeat = artistRepository.findByStageName("Solar Beat").orElseThrow();
+        Artist neonWaves = artistRepository.findByStageName("Neon Waves").orElseThrow();
+
+        Event match = crearEvento("SRC2-OK", "Coincidencia", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(10), santaMarta);
+        match.getArtists().add(solarBeat);
+
+        Event sameCity = crearEvento("SRC2-CITY", "Misma ciudad, otro artista", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(11), santaMarta);
+        sameCity.getArtists().add(neonWaves);
+
+        Event sameArtist = crearEvento("SRC2-ART", "Mismo artista, otra ciudad", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(12), bogota);
+        sameArtist.getArtists().add(solarBeat);
+
+        eventRepository.saveAndFlush(match);
+        eventRepository.saveAndFlush(sameCity);
+        eventRepository.saveAndFlush(sameArtist);
+
+        List<Event> events = eventRepository.findByCityAndArtistStageName("Santa Marta", "Solar Beat");
+
+        assertThat(events).extracting(Event::getEventCode).containsExactly("SRC2-OK");
+    }
+
+    @Test
+    @DisplayName("FR-TKT-007 / AC-008: Tickets por evento y estado, incluido CANCELLED")
+    void testTicketsPorEventoYEstadoIncluyeCancelled() {
+        Venue venue = venueRepository.save(new Venue("VEN-TKT-STATUS", "Teatro Estados", "Cali", "Calle 9 #1-2", 1200));
+        User user = userRepository.save(new User("tkt_status", "tkt_status@example.com"));
+        Event event = crearEvento("TKT-STATUS", "Concierto Estados", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(15), venue);
+
+        crearTicket("TKT-STATUS-PAID", TicketStatus.PAID, user, event);
+        crearTicket("TKT-STATUS-CANCELLED", TicketStatus.CANCELLED, user, event);
+        crearTicket("TKT-STATUS-RESERVED", TicketStatus.RESERVED, user, event);
+
+        List<Ticket> paid = ticketRepository.findByEventEventCodeAndStatus("TKT-STATUS", TicketStatus.PAID);
+        List<Ticket> cancelled = ticketRepository.findByEventEventCodeAndStatus("TKT-STATUS", TicketStatus.CANCELLED);
+
+        assertThat(paid).extracting(Ticket::getTicketCode).containsExactly("TKT-STATUS-PAID");
+        assertThat(cancelled).extracting(Ticket::getTicketCode).containsExactly("TKT-STATUS-CANCELLED");
+    }
+
+    @Test
+    @DisplayName("FR-SRC-004: Tickets de eventos futuros ordenados por fecha del evento")
+    void testTicketsDeEventosFuturosOrdenados() {
+        LocalDateTime cutoff = LocalDateTime.now();
+        Venue venue = venueRepository.save(new Venue("VEN-SRC-004", "Arena Futuro", "Medellín", "Calle 10 #3-4", 9000));
+        User user = userRepository.save(new User("src4_user", "src4@example.com"));
+
+        Event later = crearEvento("SRC4-LATER", "Evento Lejano", EventStatus.PUBLISHED,
+                cutoff.plusDays(30), venue);
+        Event sooner = crearEvento("SRC4-SOONER", "Evento Cercano", EventStatus.PUBLISHED,
+                cutoff.plusDays(10), venue);
+        Event past = crearEvento("SRC4-PAST", "Evento Pasado", EventStatus.PUBLISHED,
+                cutoff.minusDays(10), venue);
+
+        crearTicket("SRC4-T-LATER", TicketStatus.PAID, user, later);
+        crearTicket("SRC4-T-SOONER", TicketStatus.PAID, user, sooner);
+        crearTicket("SRC4-T-PAST", TicketStatus.PAID, user, past);
+
+        List<Ticket> result = ticketRepository.findTicketsForFutureEvents(cutoff);
+
+        assertThat(result).extracting(ticket -> ticket.getEvent().getEventCode())
+                .containsExactly("SRC4-SOONER", "SRC4-LATER");
+    }
+
+    @Test
+    @DisplayName("FR-VEN-002: PostgreSQL rechaza código de venue duplicado")
+    void testVenueCodeDuplicado() {
+        venueRepository.saveAndFlush(new Venue("VEN-DUP", "Arena Uno", "Cali", "Calle 1", 1000));
+        Venue duplicate = new Venue("VEN-DUP", "Arena Dos", "Cali", "Calle 2", 2000);
+
+        assertThrows(DataIntegrityViolationException.class, () -> venueRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    @DisplayName("FR-VEN-003: PostgreSQL rechaza capacidad no positiva")
+    void testVenueCapacidadInvalida() {
+        Venue invalid = new Venue("VEN-CAP-0", "Sin Aforo", "Cali", "Calle 3", 0);
+
+        assertThrows(DataIntegrityViolationException.class, () -> venueRepository.saveAndFlush(invalid));
+    }
+
+    @Test
+    @DisplayName("FR-EVT-002: PostgreSQL rechaza eventCode duplicado")
+    void testEventCodeDuplicado() {
+        Venue venue = venueRepository.save(new Venue("VEN-EVT-DUP", "Arena Eventos", "Cali", "Calle 4", 3000));
+        crearEvento("EVT-DUP", "Evento Original", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(10), venue);
+        eventRepository.flush();
+
+        Event duplicate = new Event();
+        duplicate.setEventCode("EVT-DUP");
+        duplicate.setName("Evento Duplicado");
+        duplicate.setCategory(EventCategory.MUSIC);
+        duplicate.setStatus(EventStatus.PUBLISHED);
+        duplicate.setEventDate(LocalDateTime.now().plusDays(20));
+        duplicate.setVenue(venue);
+
+        assertThrows(DataIntegrityViolationException.class, () -> eventRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    @DisplayName("FR-ART-002: PostgreSQL rechaza stageName duplicado")
+    void testArtistStageNameDuplicado() {
+        Artist duplicate = new Artist("Solar Beat", "Colombia", "Pop");
+
+        assertThrows(DataIntegrityViolationException.class, () -> artistRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    @DisplayName("FR-USR-002: PostgreSQL rechaza username duplicado")
+    void testUsernameDuplicado() {
+        userRepository.saveAndFlush(new User("usuario_dup", "usuario1@example.com"));
+        User duplicate = new User("usuario_dup", "usuario2@example.com");
+
+        assertThrows(DataIntegrityViolationException.class, () -> userRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    @DisplayName("FR-USR-002: PostgreSQL rechaza email duplicado")
+    void testEmailDuplicado() {
+        userRepository.saveAndFlush(new User("usuario_email_1", "email_dup@example.com"));
+        User duplicate = new User("usuario_email_2", "email_dup@example.com");
+
+        assertThrows(DataIntegrityViolationException.class, () -> userRepository.saveAndFlush(duplicate));
+    }
+
+    @Test
+    @DisplayName("FR-TKT-003: PostgreSQL rechaza precio de ticket negativo")
+    void testTicketPrecioNegativo() {
+        Venue venue = venueRepository.save(new Venue("VEN-TKT-NEG", "Arena Tickets", "Cali", "Calle 5", 2000));
+        User user = userRepository.save(new User("tkt_neg", "tkt_neg@example.com"));
+        Event event = crearEvento("TKT-NEG", "Evento Precio", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(10), venue);
+
+        Ticket invalid = new Ticket();
+        invalid.setTicketCode("TKT-NEG");
+        invalid.setType(TicketType.GENERAL);
+        invalid.setPrice(new BigDecimal("-0.01"));
+        invalid.setStatus(TicketStatus.PAID);
+        invalid.setPurchaseDate(LocalDateTime.now());
+        invalid.setUser(user);
+        invalid.setEvent(event);
+
+        assertThrows(DataIntegrityViolationException.class, () -> ticketRepository.saveAndFlush(invalid));
+    }
+
+    @Test
+    @DisplayName("BR-003: PostgreSQL rechaza un par evento-artista duplicado")
+    void testEventArtistPairDuplicado() {
+        Venue venue = venueRepository.save(new Venue("VEN-EA-DUP", "Arena Artistas", "Cali", "Calle 6", 4000));
+        Artist artist = artistRepository.findByStageName("Solar Beat").orElseThrow();
+        Event event = crearEvento("EA-DUP", "Evento Artista", EventStatus.PUBLISHED,
+                LocalDateTime.now().plusDays(10), venue);
+        eventRepository.flush();
+
+        jdbcTemplate.update("INSERT INTO event_artists (event_id, artist_id) VALUES (?, ?)",
+                event.getId(), artist.getId());
+
+        assertThrows(DataIntegrityViolationException.class, () ->
+                jdbcTemplate.update("INSERT INTO event_artists (event_id, artist_id) VALUES (?, ?)",
+                        event.getId(), artist.getId()));
     }
 
     private Event crearEvento(String code, String name, EventStatus status, LocalDateTime date, Venue venue) {

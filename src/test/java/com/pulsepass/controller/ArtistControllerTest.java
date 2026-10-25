@@ -13,6 +13,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -82,5 +84,19 @@ class ArtistControllerTest {
                 .andExpect(jsonPath("$[0].stageName").value("Solar Beat"));
 
         verify(artistService).findActiveArtists();
+    }
+
+    // PRD §14: variable de ruta con tipo inválido -> 400 con ErrorResponse, sin invocar el Service
+    @Test
+    void findById_TipoInvalido_Returns400() throws Exception {
+        mockMvc.perform(get("/api/artists/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.error").value("Bad Request"))
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.details.id").exists());
+
+        verify(artistService, never()).findById(anyLong());
     }
 }
