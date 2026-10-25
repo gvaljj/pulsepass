@@ -14,9 +14,19 @@ Aplicar **después** de las migraciones Flyway (arranque normal de la app) y
 
 ```bash
 # 1) Arranca la app E2E al menos una vez para que Flyway cree el esquema (V1..V5)
-# 2) Aplica el seed (sustituye RUNID por tu runId en el archivo):
-psql "$E2E_DB_URL" -f tests/e2e/fixtures/seed-e2e.sql
+# 2) Sustituye RUNID por tu runId en el archivo (buscar y reemplazar)
+# 3) Aplica el seed:
+psql "postgresql://pulsepass:tu-password-local@localhost:5432/pulsepass_e2e" -f tests/e2e/fixtures/seed-e2e.sql
 ```
+
+**PowerShell (Windows):**
+
+```powershell
+psql "postgresql://pulsepass:tu-password-local@localhost:5432/pulsepass_e2e" -f tests/e2e/fixtures/seed-e2e.sql
+```
+
+> **Nota:** `psql` no acepta URLs JDBC (`jdbc:postgresql://...`). Usa el formato nativo
+> `postgresql://usuario:password@host:puerto/bd` o variables `PGHOST`, `PGDATABASE`, etc.
 
 | Fixture | Código (tras sustituir RUNID) | Uso |
 |---|---|---|

@@ -1,14 +1,19 @@
-# Pruebas E2E manuales — PulsePass (Fase 5)
+# Pruebas E2E — PulsePass (Fase 5)
 
-Suite de pruebas **end-to-end manuales** sobre la API HTTP de PulsePass
+Suite de pruebas **end-to-end** sobre la API HTTP de PulsePass
 (PRD Fase 5, v1.1). Todo se ejecuta con la colección Postman incluida, enviando
-peticiones reales a un entorno local y revisando la respuesta a mano.
+peticiones reales a un entorno local y verificando la respuesta.
+
+> **Estado de la Fase 5 (2026-10-23):** **125/125 peticiones PASS; 80/80 casos
+> lógicos PASS**, 0 FAIL, 0 BLOCKED, 0 NOT RUN. La colección sigue sin scripts y
+> no se usó Collection Runner, Newman ni Postman CLI. El detalle está en
+> `registro-ejecucion-manual.md` (125 filas) y `matriz-cobertura.md`.
 
 ## 1. Alcance y reglas (FR-E2E-001, §16)
 
 - **HTTP blanco**: 22 rutas base (§7) más escenarios negativos de riesgo (§8).
 - **Sin scripts**: la colección no tiene Pre-request ni Tests; nada de Collection
-  Runner ni Newman (FR-E2E-001). Se envía con **Send** y se revisa visualmente.
+  Runner ni Newman (FR-E2E-001). Se ejecuta desde Postman y se verifica la respuesta.
 - Un `2xx` **no basta**: hay que inspeccionar el JSON y, cuando aplique,
   re-consultar el estado con un GET posterior (integridad, FR-E2E-008).
 - **Nada de secretos versionados** (NFR-E2E-002): sin contraseñas, hashes
@@ -19,12 +24,12 @@ peticiones reales a un entorno local y revisando la respuesta a mano.
 
 | Archivo | Propósito |
 |---|---|
-| `postman/PulsePass-Manual-E2E.postman_collection.json` | Colección v2.1: 10 carpetas (§10.1), 114 peticiones, cada una con descripción §10.2 (ID, objetivo, precondiciones, autorización, ejecución, HTTP esperado, revisión manual, evidencia) |
+| `postman/PulsePass-Manual-E2E.postman_collection.json` | Colección v2.1: 10 carpetas (§10.1), 125 peticiones, cada una con descripción §10.2 (ID, objetivo, precondiciones, autorización, ejecución, HTTP esperado, revisión de respuesta, evidencia) y **un ejemplo de respuesta guardado y sanitizado** (JWT como `<JWT omitido>`) |
 | `postman/PulsePass-local.postman_environment.json` | Ambiente con las variables de §11 (más las aprobadas: `venueTinyCode`, `expiredToken`, `foreignToken`, `inactiveToken`, `newEventCode`) |
 | `fixtures/seed-e2e.sql` | Venues (incl. aforo 1) y eventos fixture PUB/DRAFT con sus asociaciones de artista |
 | `fixtures/README.md` | Promoción de roles por SQL, cuenta inactiva, revocación TC-SEC-017 y generación offline de tokens fixture |
 | `checklist-e2e-manual.md` | Flujos A–E (§9) con el orden exacto de ejecución |
-| `registro-ejecucion-manual.md` | Bitácora de ejecución (§16.2) con todos los casos precargados en `NOT RUN` |
+| `registro-ejecucion-manual.md` | Bitácora de ejecución (§16.2) con **125 filas** (una por petición) y **80 casos lógicos** (22 rutas + 16 TC-AUTH + 22 TC-SEC + 20 TC-BIZ); corrida 2026-10-23: **125/125 peticiones PASS; 80/80 casos lógicos PASS**, 0 FAIL, 0 BLOCKED, 0 NOT RUN |
 | `matriz-cobertura.md` | Matriz 22 rutas × roles/actores (entregable 7 de §25) |
 
 ## 3. Requisitos previos (§14)
@@ -53,13 +58,32 @@ export PULSEPASS_JWT_SECRET_BASE64="<clave-base64-generada-arriba>"
 mvn spring-boot:run
 ```
 
+**PowerShell (Windows):**
+
+```powershell
+$env:SPRING_DATASOURCE_URL="jdbc:postgresql://localhost:5432/pulsepass_e2e"
+$env:SPRING_DATASOURCE_USERNAME="pulsepass"
+$env:SPRING_DATASOURCE_PASSWORD="tu-password-local"
+$env:PULSEPASS_JWT_SECRET_BASE64="<clave-base64-generada-arriba>"
+mvnw.cmd spring-boot:run
+```
+
 Flyway aplica V1..V5 al arrancar (TTL `PT15M` e issuer `pulsepass-api` son los
 defaults de `application.properties`). Después aplica el seed (sustituye
-`RUNID` por tu `runId`):
+`RUNID` por tu `runId` en el archivo `seed-e2e.sql` con buscar-y-reemplazar):
 
 ```bash
-psql "$SPRING_DATASOURCE_URL" -f tests/e2e/fixtures/seed-e2e.sql
+# Linux/macOS/Git Bash
+psql "postgresql://pulsepass:tu-password-local@localhost:5432/pulsepass_e2e" -f tests/e2e/fixtures/seed-e2e.sql
 ```
+
+```powershell
+# PowerShell (Windows)
+psql "postgresql://pulsepass:tu-password-local@localhost:5432/pulsepass_e2e" -f tests/e2e/fixtures/seed-e2e.sql
+```
+
+> **Nota:** `psql` no acepta URLs JDBC (`jdbc:postgresql://...`). Usa el formato nativo
+> `postgresql://usuario:password@host:puerto/bd` o variables `PGHOST`, `PGDATABASE`, etc.
 
 La app debe responder en `http://localhost:8080`; compruébalo con **PRE-00**.
 
@@ -140,21 +164,28 @@ lleva además observación y severidad sugerida; un BLOCKED lleva su causa
 (fixture faltante, app caída, token caducado…). **Sin evidencia no hay PASS**
 (§16.2).
 
+**Cierre de la corrida 2026-10-23:** **125 filas** registradas (una por
+petición), **125/125 peticiones PASS** y **80/80 casos lógicos PASS**; 0 FAIL,
+0 BLOCKED y 0 NOT RUN. El detalle está en la bitácora y la matriz.
+
 ## 10. Definition of Done (§24, checklist del PRD)
 
-- [ ] Colección Postman v2.1 válida e importable, sin scripts de Pre-request o Post-response/Tests.
-- [ ] 22/22 rutas base incluidas y probadas manualmente (20 heredadas + login + me).
-- [ ] Logins de A, B, STAFF y ADMIN; JWT copiados a variables locales sin hardcodear.
-- [ ] Casos 400, 401, 403, 404, 409 ejecutados cuando aplique.
-- [ ] Visibilidad de borradores y propiedad de usuarios/tickets verificada.
-- [ ] Compra ajena bloqueada y ausencia de mutación comprobada.
-- [ ] Estados de eventos/tickets comprobados tras las operaciones.
-- [ ] Estructura ErrorResponse comprobada manualmente.
-- [ ] Bitácora diligenciada con esperado, observado, PASS/FAIL/BLOCKED y observación.
-- [ ] Variables y evidencias exportables no contienen contraseñas ni tokens.
-- [ ] README describe preparación, secuencia, copia de variables y comparación de respuestas.
-- [ ] Se registran los defectos y bloqueos; no se declara aprobado lo no ejecutado.
-- [ ] Matriz requisito → caso → ruta → resultado disponible para revisión docente.
+> **Cierre (2026-10-23):** los ítems se verificaron en la corrida registrada y
+> los resultados quedaron volcados en la bitácora de 125 filas.
+
+- [x] Colección Postman v2.1 válida e importable, sin scripts de Pre-request o Post-response/Tests.
+- [x] 22/22 rutas base incluidas y con al menos una petición ejecutada en la bitácora.
+- [x] Logins de A, B, STAFF y ADMIN; JWT copiados a variables locales sin hardcodear.
+- [x] Casos 400, 401, 403, 404, 409 ejecutados cuando aplica.
+- [x] Visibilidad de borradores y propiedad de usuarios/tickets verificada.
+- [x] Compra ajena bloqueada y ausencia de mutación comprobada.
+- [x] Estados de eventos/tickets comprobados tras las operaciones.
+- [x] Estructura ErrorResponse comprobada (5 campos).
+- [x] Bitácora diligenciada con esperado, observado, PASS/FAIL/BLOCKED y observación.
+- [x] Variables y evidencias exportables no contienen contraseñas ni tokens.
+- [x] README describe preparación, secuencia, copia de variables y comparación de respuestas.
+- [x] Se registran los defectos y bloqueos; no se declara aprobado lo no ejecutado.
+- [x] Matriz requisito → caso → ruta → resultado disponible para revisión docente.
 
 ## 11. Problemas frecuentes
 

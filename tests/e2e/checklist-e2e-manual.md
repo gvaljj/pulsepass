@@ -1,9 +1,14 @@
-# Checklist E2E manual — Flujos A–E (PRD §9)
+# Checklist E2E — Flujos A–E (PRD §9)
 
-Orden de ejecución de la sesión manual. Cada paso corresponde a una petición de
-la colección **PulsePass — E2E Manual** (nombre exacto entre paréntesis).
-Registra el resultado de cada caso en `registro-ejecucion-manual.md`; no pases
-de flujo con FAIL sin anotarlo.
+> **Estado de la corrida (2026-10-23):** los flujos A–E tienen resultado
+> explícito. Resultado: **125/125 peticiones PASS; 80/80 casos lógicos PASS**,
+> 0 FAIL, 0 BLOCKED, 0 NOT RUN. Detalle en `registro-ejecucion-manual.md` y
+> `matriz-cobertura.md`.
+
+Orden de ejecución de la corrida. Cada paso puede contener una o varias
+peticiones de la colección **PulsePass — E2E Manual** (nombre exacto entre
+paréntesis); la bitácora tiene **una fila por petición**. Registra el resultado
+en `registro-ejecucion-manual.md`; no pases de flujo con FAIL sin anotarlo.
 
 **Preparación previa** (§4 de `README.md`): app E2E sobre `pulsepass_e2e`,
 seed aplicado (RUNID sustituido), ambiente **PulsePass-local** importado,
@@ -52,7 +57,7 @@ rol), STAFF/ADMIN fixture (logins).
 | B11 | `E2E-USR-02`, `E2E-USR-03` (propios) | 200 |
 | B12 | `USR-02-ADMIN`, `USR-03-ADMIN` (ajenos con ADMIN) | 200 |
 | B13 | `TC-SEC-006`, `TC-SEC-007` (ajenos con B) | 403 sin datos personales de A |
-| B14 | `USR-02-401`, `USR-02-404` | 401 / 404 (distintos y justificados) |
+| B14 | `USR-02-401`, `USR-02-404`, `USR-03-401` | 401 / 404 / 401 (distintos y justificados) |
 
 ## Flujo C — Evento y publicación (ADMIN)
 
@@ -77,6 +82,9 @@ artista → publicar → verificar visibilidad pública.
 | C11 | Denegaciones de asociación: `TC-SEC-003` (USER_A), `EVT-05-STAFF` (STAFF) | 403 y `artists[]` sin cambios |
 | C12 | `EVT-05-409`, `EVT-05-404` | 409 duplicado / 404 artista inexistente |
 | C13 | `TC-SEC-015`/`EVT-02-STAFF` (borrador fixture) + `EVT-06-OPS` | 200 `DRAFT` para ADMIN y STAFF; el anónimo no lo ve (A9/A10) |
+| C14 | **401 explícitos**: `EVT-04-401` (publish sin token), `EVT-05-401` (asociar artista sin token) | 401 uniforme en ambos |
+| C15 | **Setup TC-BIZ-014B**: `SETUP-EVT-EDAD` → `SETUP-EVT-EDAD-PUB` (crear y publicar evento con minimumAge=40) | 201 DRAFT → 200 PUBLISHED |
+| C16 | **Setup TC-BIZ-014C**: `SETUP-EVT-AFORO` → `SETUP-EVT-AFORO-PUB` (crear y publicar evento en venueTinyCode) | 201 DRAFT → 200 PUBLISHED |
 
 ## Flujo D — Compras y ciclo de vida de tickets
 
@@ -96,15 +104,17 @@ precede al de estado).
 | D5 | `TKT-02-STAFF`, `TKT-02-404`, `TKT-03-ADMIN`, `TKT-03-401` | 200 OPS / 404 / 200 ADMIN / 401 |
 | D6 | `TC-SEC-011` (B cancela T1) → releer `E2E-TKT-02` | 403 y T1 **sigue PAID** |
 | D7 | `E2E-TKT-05` (A cancela T1) → `BIZ-V4` | 200 y relectura `status="CANCELLED"` |
-| D8 | `TKT-05-409`, `TKT-05-STAFF` | 409 transición / 403 (STAFF excluido de cancelar) |
+| D8 | `TKT-05-409`, `TKT-05-STAFF`, `TKT-05-401` | 409 transición / 403 (STAFF excluido) / 401 sin token |
 | D9 | `TC-SEC-013`, `TKT-04-401` (taquilla) | 403 USER / 401 sin token |
 | D10 | `E2E-TKT-04` de nuevo | la lista `paid` ya **no** contiene T1 |
 | D11 | `E2E-TKT-06` (STAFF usa T2) → `BIZ-V5` | 200 y relectura `status="USED"` |
 | D12 | `TC-SEC-012` (USER_B intenta usar T2), `TKT-06-OWNER` (dueño A) | 403 / 403 y T2 **sigue USED** |
 | D13 | `TKT-06-409`, `TKT-06-401` | 409 doble uso / 401 |
-| D14 | `TC-BIZ-014B`: ADMIN crea `EVT-E2E-<runId>-EDAD` (`minimumAge=40`, copia de `E2E-EVT-01`) y lo publica; luego compra USER_A | 409 con el mensaje de edad mínima (40) |
-| D15 | `TC-BIZ-014C`: ADMIN crea `EVT-E2E-<runId>-AFORO` en `venueTinyCode`, lo publica, se vende su único ticket; segunda compra | 409 (evento `SOLD_OUT`); verificar con ADMIN `status="SOLD_OUT"` y solo 1 ticket |
-| D16 | `E2E-EVT-03`/`E2E-EVT-06` al cierre | el listado público sigue sin borradores |
+| D14 | **Setup TC-BIZ-014B**: `SETUP-TKT-AFORO-FIRST` (vender el único ticket del evento AFORO) | 201 PAID; evento pasa a SOLD_OUT |
+| D15 | `TC-BIZ-014B`: compra USER_A en evento EDAD (`minimumAge=40`) | 409 con mensaje edad mínima (40) |
+| D16 | `TC-BIZ-014C`: segunda compra en evento AFORO (ya SOLD_OUT) | 409; el servicio rechaza la compra porque el evento no está PUBLISHED (SOLD_OUT); verificar status=SOLD_OUT y ausencia de ticket nuevo |
+| D17 | `E2E-EVT-03`/`E2E-EVT-06` al cierre | el listado público sigue sin borradores |
+| D18 | **401 explícitos**: `TKT-02-401` (GET ticket), `TKT-05-401` (cancel sin token) | 401 uniforme en ambos |
 
 ## Flujo E — Combinado y cierre de sesión
 
@@ -119,8 +129,9 @@ validaciones (FR-E2E-010..016).
 | E3 | `TC-AUTH-015A` + `TC-AUTH-015B` (mismo Bearer inválido) | 200 público / 401 en `/me` |
 | E4 | `TC-SEC-016B` (login candidato) + `TC-SEC-016C` (`/me` con token pegado a mano) | `roles=["USER"]`, nunca `ADMIN` |
 | E5 | `TC-SEC-017`: SQL de revocación → petición → **restauración SQL** | 403 con el JWT firmado sin rol STAFF |
-| E6 | Carpeta 08 completa (validaciones y anatomía de errores) | 400 con `details`, 409 de negocio y ErrorResponse de 5 campos |
-| E7 | Cierre: completar `registro-ejecucion-manual.md` y `matriz-cobertura.md` | ningún caso en `NOT RUN` sin causa; cobertura declarada |
+| E6 | `TC-AUTH-CLAIMS`: inspección de claims JWT (sub, iss, iat, exp, jti) con `expectedIssuer`/`expectedTokenTtlSeconds` | Claims correctos verificados (`alg=HS256`, TTL 900) |
+| E7 | Carpeta 08 completa (validaciones y anatomía de errores) | 400 con `details`, 409 de negocio y ErrorResponse de 5 campos |
+| E8 | Cierre: completar `registro-ejecucion-manual.md` y `matriz-cobertura.md` | ningún caso en `NOT RUN` sin causa; cobertura declarada |
 
 ---
 

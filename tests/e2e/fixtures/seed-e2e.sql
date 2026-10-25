@@ -19,7 +19,7 @@
 --     (ON CONFLICT DO NOTHING): puede re-ejecutarse en la misma BD.
 --
 -- EJEMPLO:
---   psql "$E2E_DB_URL" -f tests/e2e/fixtures/seed-e2e.sql
+--   psql "postgresql://pulsepass:tu-password-local@localhost:5432/pulsepass_e2e" -f tests/e2e/fixtures/seed-e2e.sql
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
