@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -277,5 +278,28 @@ class SecurityPersistenceIntegrationTest {
         LocalDate birthDate = jdbcTemplate.queryForObject(
                 "SELECT birth_date FROM user_profiles WHERE user_id = ?", LocalDate.class, user.getId());
         assertThat(birthDate).isEqualTo(LocalDate.of(1996, 1, 1));
+    }
+
+    @Test
+    @DisplayName("V5 §17.3: la PK compuesta (user_id, role) rechaza un rol duplicado")
+    void userRole_RolDuplicado_RechazadoPorPkCompuesta() {
+        User user = userRepository.saveAndFlush(new User("role_dup", "role_dup@email.com"));
+        String insertRole = "INSERT INTO user_roles (user_id, role) VALUES (?, ?)";
+
+        // JDBC directo: con @IdClass, saveAndFlush podría hacer merge y ocultar el INSERT duplicado.
+        jdbcTemplate.update(insertRole, user.getId(), "USER");
+
+        assertThatThrownBy(() -> jdbcTemplate.update(insertRole, user.getId(), "USER"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("V5 §17.3: el CHECK chk_role_value rechaza roles fuera de USER/STAFF/ADMIN")
+    void userRole_RolInvalido_RechazadoPorCheck() {
+        User user = userRepository.saveAndFlush(new User("role_invalid", "role_invalid@email.com"));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "INSERT INTO user_roles (user_id, role) VALUES (?, ?)", user.getId(), "SUPERADMIN"))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
