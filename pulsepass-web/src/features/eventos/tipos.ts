@@ -1,22 +1,25 @@
 import { z } from 'zod'
 import { ArtistSchema } from '../artistas/tipos'
 
-export const EventCategorySchema = z.enum([
+export const CATEGORIAS_EVENTO = [
   'MUSIC',
   'TECHNOLOGY',
   'SPORTS',
   'CULTURE',
   'EDUCATION',
   'ENTERTAINMENT',
-])
+] as const
 
-export const EventStatusSchema = z.enum([
+export const ESTADOS_EVENTO = [
   'DRAFT',
   'PUBLISHED',
   'SOLD_OUT',
   'CANCELLED',
   'FINISHED',
-])
+] as const
+
+export const EventCategorySchema = z.enum(CATEGORIAS_EVENTO)
+export const EventStatusSchema = z.enum(ESTADOS_EVENTO)
 
 export type EventCategory = z.infer<typeof EventCategorySchema>
 export type EventStatus = z.infer<typeof EventStatusSchema>

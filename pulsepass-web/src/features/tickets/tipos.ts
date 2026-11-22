@@ -1,7 +1,10 @@
 import { z } from 'zod'
 
-export const TicketTypeSchema = z.enum(['GENERAL', 'VIP', 'BACKSTAGE', 'STUDENT'])
-export const TicketStatusSchema = z.enum(['PAID', 'USED', 'CANCELLED'])
+export const TIPOS_TICKET = ['GENERAL', 'VIP', 'BACKSTAGE', 'STUDENT'] as const
+export const ESTADOS_TICKET = ['PAID', 'USED', 'CANCELLED'] as const
+
+export const TicketTypeSchema = z.enum(TIPOS_TICKET)
+export const TicketStatusSchema = z.enum(ESTADOS_TICKET)
 
 export type TicketType = z.infer<typeof TicketTypeSchema>
 export type TicketStatus = z.infer<typeof TicketStatusSchema>

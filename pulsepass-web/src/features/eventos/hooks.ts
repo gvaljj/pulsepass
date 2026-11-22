@@ -9,10 +9,11 @@ import {
 } from './api'
 import type { CreateEventRequest, Event, EventStatus } from './tipos'
 
-export function useEventosPublicados() {
+export function useEventosPublicados(enabled = true) {
   return useQuery({
     queryKey: ['eventos', 'publicados'],
     queryFn: listarEventosPublicados,
+    enabled,
     staleTime: 60_000,
   })
 }
