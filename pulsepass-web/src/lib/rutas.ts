@@ -11,9 +11,8 @@ export const RUTAS = {
   cuenta: '/cuenta',
   misTickets: '/mis-tickets',
   ticket: (ticketCode: string) => `/mis-tickets/${encodeURIComponent(ticketCode)}`,
-  confirmacion: (ticketCode: string) =>
-    `/mis-tickets/${encodeURIComponent(ticketCode)}/confirmacion`,
-  staffValidar: '/staff/validar',
+  confirmacion: (ticketCode: string) => `/compra/confirmacion/${encodeURIComponent(ticketCode)}`,
+  staffValidar: '/staff/validacion',
   staffTickets: (eventCode: string) => `/staff/eventos/${encodeURIComponent(eventCode)}/tickets`,
   adminEventos: '/admin/eventos',
   adminCrearEvento: '/admin/eventos/nuevo',
