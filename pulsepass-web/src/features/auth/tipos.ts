@@ -48,8 +48,20 @@ export const RegisterUserRequestSchema = z.object({
   email: z.string().trim().email('El correo no es válido'),
   firstName: z.string().trim().min(1, 'El nombre es obligatorio'),
   lastName: z.string().trim().min(1, 'El apellido es obligatorio'),
-  birthDate: z.string().min(1, 'La fecha de nacimiento es obligatoria'),
-  password: z.string().min(12, 'La contraseña debe tener al menos 12 caracteres'),
+  birthDate: z
+    .string()
+    .min(1, 'La fecha de nacimiento es obligatoria')
+    .refine(
+      (value) => value <= new Date().toISOString().slice(0, 10),
+      'La fecha de nacimiento no puede ser futura',
+    ),
+  password: z
+    .string()
+    .min(12, 'La contraseña debe tener al menos 12 caracteres')
+    .refine(
+      (value) => new TextEncoder().encode(value).length <= 72,
+      'La contraseña no puede superar 72 bytes',
+    ),
   phone: z.string().trim().optional(),
   city: z.string().trim().optional(),
 })
