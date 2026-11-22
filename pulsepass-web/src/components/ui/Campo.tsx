@@ -1,10 +1,11 @@
 import { clsx } from 'clsx'
-import { useId, type ComponentProps } from 'react'
+import { useId, type ComponentProps, type ReactNode } from 'react'
 
 export interface CampoProps extends ComponentProps<'input'> {
   etiqueta: string
   error?: string
   ayuda?: string
+  sufijo?: ReactNode
 }
 
 const clasesInput =
@@ -16,6 +17,7 @@ export function Campo({
   ayuda,
   id,
   className,
+  sufijo,
   'aria-describedby': ariaDescribedBy,
   ...props
 }: CampoProps) {
@@ -32,13 +34,20 @@ export function Campo({
       <label htmlFor={inputId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
         {etiqueta}
       </label>
-      <input
-        id={inputId}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={descripcion || undefined}
-        className={clsx(clasesInput, error && 'border-peligro-500 focus:border-peligro-500')}
-        {...props}
-      />
+      <div className="relative">
+        <input
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={descripcion || undefined}
+          className={clsx(clasesInput, sufijo && 'pr-10', error && 'border-peligro-500 focus:border-peligro-500')}
+          {...props}
+        />
+        {sufijo && (
+          <span className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center">
+            {sufijo}
+          </span>
+        )}
+      </div>
       {ayuda && (
         <p id={ayudaId} className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {ayuda}

@@ -4,7 +4,7 @@ import {
   etiquetaEstadoEvento,
   etiquetaEstadoTicket,
   etiquetaTipoTicket,
-} from './etiquetas'
+} from './etiquetasFunciones'
 import type { EventCategory, EventStatus } from '../../features/eventos/tipos'
 import type { TicketStatus, TicketType } from '../../features/tickets/tipos'
 
