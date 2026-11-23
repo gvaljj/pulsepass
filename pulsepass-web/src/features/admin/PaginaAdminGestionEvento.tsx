@@ -74,7 +74,7 @@ export default function PaginaAdminGestionEvento() {
 
   async function publicarEvento() {
     try {
-      await publicar.mutateAsync('PUBLISHED')
+      await publicar.mutateAsync()
       mostrarAviso('Evento publicado correctamente.')
       setModalPublicar(false)
     } catch (error) {
