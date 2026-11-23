@@ -5,7 +5,6 @@ import {
   EventSummarySchema,
   type CreateEventRequest,
   type Event,
-  type EventStatus,
   type EventSummary,
 } from './tipos'
 
@@ -33,10 +32,9 @@ export function crearEvento(cuerpo: CreateEventRequest): Promise<Event> {
   })
 }
 
-export function publicarEvento(eventCode: string, status: EventStatus): Promise<Event> {
-  return solicitar(`/events/${encodeURIComponent(eventCode)}`, {
+export function publicarEvento(eventCode: string): Promise<Event> {
+  return solicitar(`/events/${encodeURIComponent(eventCode)}/publish`, {
     metodo: 'PATCH',
-    cuerpo: { status },
     esquema: EventSchema,
   })
 }

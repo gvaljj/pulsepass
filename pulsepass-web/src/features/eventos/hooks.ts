@@ -7,7 +7,7 @@ import {
   publicarEvento,
   asociarArtista,
 } from './api'
-import type { CreateEventRequest, Event, EventStatus } from './tipos'
+import type { CreateEventRequest, Event } from './tipos'
 
 export function useEventosPublicados(enabled = true) {
   return useQuery({
@@ -51,7 +51,7 @@ export function usePublicarEvento(eventCode: string) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (status: EventStatus) => publicarEvento(eventCode, status),
+    mutationFn: () => publicarEvento(eventCode),
     onSuccess: (evento: Event) => {
       queryClient.setQueryData(['evento', evento.eventCode], evento)
       void queryClient.invalidateQueries({ queryKey: ['eventos', 'publicados'] })
