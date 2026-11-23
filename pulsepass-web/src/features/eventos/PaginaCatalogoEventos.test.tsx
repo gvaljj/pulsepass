@@ -18,7 +18,7 @@ describe('PaginaCatalogoEventos', () => {
       </QueryClientProvider>,
     )
 
-    expect(await screen.findByText('Noche de Jazz')).toBeInTheDocument()
+    expect(await screen.findByText('Noche de Jazz y Cultura')).toBeInTheDocument()
     expect(screen.getByText('Cartagena')).toBeInTheDocument()
   })
 })
