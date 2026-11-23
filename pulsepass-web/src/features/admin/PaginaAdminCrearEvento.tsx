@@ -43,8 +43,6 @@ export default function PaginaAdminCrearEvento() {
   })
 
   const descripcion = useWatch({ control, name: 'description' }) ?? ''
-  const categoria = useWatch({ control, name: 'category' })
-  const sede = useWatch({ control, name: 'venueCode' })
   const sedes = useMemo(() => sedesQuery.data ?? [], [sedesQuery.data])
 
   const opcionesSedes = useMemo(
@@ -157,8 +155,7 @@ export default function PaginaAdminCrearEvento() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Selector
             etiqueta="Categoría"
-            value={categoria}
-            onChange={(evento) => register('category').onChange(evento)}
+            {...register('category')}
             opciones={CATEGORIAS_EVENTO.map((valor) => ({
               valor,
               etiqueta: etiquetaCategoria(valor),
@@ -168,8 +165,7 @@ export default function PaginaAdminCrearEvento() {
           <Selector
             etiqueta="Sede"
             placeholder="Selecciona una sede"
-            value={sede}
-            onChange={(evento) => register('venueCode').onChange(evento)}
+            {...register('venueCode')}
             opciones={opcionesSedes}
             error={errors.venueCode?.message}
           />
